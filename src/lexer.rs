@@ -111,7 +111,6 @@ impl Lexer {
                     '~' => Token::Tilde(self.file_position, self.line, self.line_position),
                     '?' => Token::Question(self.file_position, self.line, self.line_position),
                     '@' => Token::At(self.file_position, self.line, self.line_position),
-                    '_' => Token::Underscore(self.file_position, self.line, self.line_position),
                     '!' => {
                         if self.match_next('=') {
                             Token::BangEqual(self.file_position, self.line, self.line_position)
@@ -208,6 +207,7 @@ impl Lexer {
             "implements" => Token::Implements(start, self.line, self.line_position),
             "require" => Token::Require(start, self.line, self.line_position),
             "do" => Token::Do(start, self.line, self.line_position),
+            "_" => Token::Underscore(self.file_position, self.line, self.line_position),
             _ => Token::Identifier(start, self.line, self.line_position, text.to_string()),
         };
         Ok(token)

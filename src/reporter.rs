@@ -84,10 +84,6 @@ impl Reporter {
 
         let line_number_width = lines.len().to_string().len();
 
-        // eprintln!(
-        //     "{}{}error:{} {} at line {}, position {}{}",
-        //     bold, error_color, reset, message, line, file_position, reset
-        // );
         eprintln!("{}{}error: {}{}", ANSI_BOLD, ANSI_RED, ANSI_RESET, message);
 
         eprintln!(
@@ -98,7 +94,12 @@ impl Reporter {
         );
         eprintln!();
 
-        let start_line = line.saturating_sub(LINE_CONTEXT);
+        let start_line = if line > LINE_CONTEXT {
+            line - LINE_CONTEXT
+        } else {
+            1
+        };
+
         let end_line = std::cmp::min(line + LINE_CONTEXT, lines.len());
 
         for (i, line_content) in lines[start_line - 1..end_line].iter().enumerate() {
