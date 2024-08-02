@@ -16,7 +16,11 @@ fn main() {
     let mut lexer = Lexer::new(reader, Reporter::new(file_path.into()));
 
     while !lexer.is_at_end() {
-        println!("{:?}", lexer.request_next_token());
+        if let Ok(token) = lexer.request_next_token() {
+            println!("{}", token)
+        } else {
+            std::process::exit(1);
+        }
         // lexer.request_next_token();
     }
 }

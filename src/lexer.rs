@@ -364,10 +364,20 @@ impl Lexer {
                 if c == '\n' {
                     self.line += 1;
                     self.line_position = 0;
+                    
+                    let e = LexerError::Syntax(SyntaxError::UnterminatedStringLiteral {
+                        line: start_line,
+                        file_position: start,
+                        line_position: start_line_position,
+                    });
+                    
+                    self.reporter.report(&e);
+                    return Err(e);
                 }
                 value.push(c);
             }
         }
+
         if self.peek().is_none() && !self.buffer.ends_with('"') {
             let e = LexerError::Syntax(SyntaxError::UnterminatedStringLiteral {
                 line: start_line,
@@ -378,6 +388,7 @@ impl Lexer {
             self.reporter.report(&e);
             return Err(e);
         }
+
         Ok(Token::String(start, self.line, self.line_position, value))
     }
 
@@ -505,18 +516,4 @@ impl Lexer {
 
         Ok(())
     }
-
-    // fn buf_check(&mut self) -> Option<Option<char>> {
-    //     if self.buffer_position >= self.buffer.len() {
-    //         if self.buffer_eof {
-    //             return Some(None);
-    //         } else {
-    //             self.refill_buffer().unwrap();
-    //             if self.buffer_position >= self.buffer.len() {
-    //                 return Some(None);
-    //             }
-    //         }
-    //     }
-    //     None
-    // }
 }
