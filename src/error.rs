@@ -2,22 +2,29 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum SyntaxError {
-    // $0 = file, $1 = line
-    #[error("unterminated string literal")]
-    UnterminatedStringLiteral(String, usize),
+    #[error("unterminated string literal at line {line}, position {line_position}")]
+    UnterminatedStringLiteral {
+        line: usize,
+        file_position: usize,
+        line_position: usize,
+    },
+
+    #[error("unexpected character '{character}' at line {line}, position {line_position}")]
+    UnexpectedCharacter {
+        line: usize,
+        file_position: usize,
+        line_position: usize,
+        character: char,
+    },
+
+    #[error("invalid number literal '{literal}' at line {line}, position {line_position}")]
+    InvalidNumberLiteral {
+        line: usize,
+        file_position: usize,
+        line_position: usize,
+        literal: String,
+    },
 }
-//
-// #[derive(Error, Debug)]
-// pub enum SysError {
-//     // $0 = file
-//     #[error("unable to read from file '{0}'")]
-//     IOError(String)
-// }
-// #[derive(Error, Debug)]
-// pub struct IOError {
-//     pub(crate) source: std::io::Error,
-//     pub(crate) file_name: String,
-// }
 
 #[derive(Error, Debug)]
 pub enum LexerError {
