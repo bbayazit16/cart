@@ -9,12 +9,27 @@ pub enum SyntaxError {
         line_position: usize,
     },
 
+    #[error("unterminated comment at line {line}, position {line_position}")]
+    UnterminatedComment {
+        line: usize,
+        file_position: usize,
+        line_position: usize,
+    },
+
     #[error("unexpected character '{character}' at line {line}, position {line_position}")]
     UnexpectedCharacter {
         line: usize,
         file_position: usize,
         line_position: usize,
         character: char,
+    },
+
+    #[error("expected '{expected}' at line {line}, position {line_position}")]
+    ExpectedDifferentCharacter {
+        line: usize,
+        file_position: usize,
+        line_position: usize,
+        expected: String,
     },
 
     #[error("invalid number literal '{literal}' at line {line}, position {line_position}")]
@@ -27,7 +42,7 @@ pub enum SyntaxError {
 }
 
 #[derive(Error, Debug)]
-pub enum LexerError {
+pub enum CompileError {
     #[error(transparent)]
     Syntax(#[from] SyntaxError),
 

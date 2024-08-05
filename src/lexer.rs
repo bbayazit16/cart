@@ -1,4 +1,4 @@
-use crate::error::{LexerError, SyntaxError};
+use crate::error::{CompileError, SyntaxError};
 use crate::reporter::Reporter;
 use crate::token::Token;
 use std::fs::File;
@@ -6,6 +6,7 @@ use std::io::{BufReader, Read};
 
 const BUFFER_CAPACITY: usize = 2024;
 
+#[derive(Debug)]
 pub struct Lexer {
     reader: BufReader<File>,
     reporter: Reporter,
@@ -31,7 +32,7 @@ impl Lexer {
         }
     }
 
-    pub fn request_next_token(&mut self) -> Result<Token, LexerError> {
+    pub fn request_next_token(&mut self) -> Result<Token, CompileError> {
         self.skip_whitespace_and_comments();
         match self.advance() {
             Some(current_char) => {
@@ -111,6 +112,7 @@ impl Lexer {
                     '~' => Token::Tilde(self.file_position, self.line, self.line_position),
                     '?' => Token::Question(self.file_position, self.line, self.line_position),
                     '@' => Token::At(self.file_position, self.line, self.line_position),
+                    '_' => Token::Underscore(self.file_position, self.line, self.line_position),
                     '!' => {
                         if self.match_next('=') {
                             Token::BangEqual(self.file_position, self.line, self.line_position)
@@ -131,14 +133,14 @@ impl Lexer {
                         if self.match_next('=') {
                             Token::GreaterEqual(self.file_position, self.line, self.line_position)
                         } else {
-                            Token::Greater(self.file_position, self.line, self.line_position)
+                            Token::RightAngle(self.file_position, self.line, self.line_position)
                         }
                     }
                     '<' => {
                         if self.match_next('=') {
                             Token::LessEqual(self.file_position, self.line, self.line_position)
                         } else {
-                            Token::Less(self.file_position, self.line, self.line_position)
+                            Token::LeftAngle(self.file_position, self.line, self.line_position)
                         }
                     }
                     _ => {
@@ -151,7 +153,7 @@ impl Lexer {
                         } else if current_char == '"' {
                             self.string()
                         } else {
-                            let e = LexerError::Syntax(SyntaxError::UnexpectedCharacter {
+                            let e = CompileError::Syntax(SyntaxError::UnexpectedCharacter {
                                 line: self.line,
                                 file_position: self.file_position,
                                 line_position: self.line_position,
@@ -173,7 +175,11 @@ impl Lexer {
         }
     }
 
-    fn identifier_or_keyword(&mut self, initial_char: char) -> Result<Token, LexerError> {
+    pub fn is_at_end(&self) -> bool {
+        self.buffer_eof && self.buffer_position >= self.buffer.len()
+    }
+
+    fn identifier_or_keyword(&mut self, initial_char: char) -> Result<Token, CompileError> {
         let start = self.file_position - initial_char.len_utf8();
         while let Some(c) = self.peek() {
             if c.is_alphanumeric() || c == '_' {
@@ -185,12 +191,15 @@ impl Lexer {
         let end = self.file_position;
         let text = &self.buffer[start..end];
         let token = match text {
+            "enum" => Token::Enum(start, self.line, self.line_position),
+            "error" => Token::Error(start, self.line, self.line_position),
             "and" => Token::And(start, self.line, self.line_position),
             "async" => Token::Async(start, self.line, self.line_position),
             "await" => Token::Await(start, self.line, self.line_position),
             "struct" => Token::Struct(start, self.line, self.line_position),
             "match" => Token::Match(start, self.line, self.line_position),
             "else" => Token::Else(start, self.line, self.line_position),
+            "elif" => Token::Elif(start, self.line, self.line_position),
             "false" => Token::False(start, self.line, self.line_position),
             "true" => Token::True(start, self.line, self.line_position),
             "func" => Token::Func(start, self.line, self.line_position),
@@ -199,7 +208,6 @@ impl Lexer {
             "let" => Token::Let(start, self.line, self.line_position),
             "mut" => Token::Mut(start, self.line, self.line_position),
             "or" => Token::Or(start, self.line, self.line_position),
-            "print" => Token::Print(start, self.line, self.line_position),
             "return" => Token::Return(start, self.line, self.line_position),
             "while" => Token::While(start, self.line, self.line_position),
             "use" => Token::Use(start, self.line, self.line_position),
@@ -207,13 +215,13 @@ impl Lexer {
             "implements" => Token::Implements(start, self.line, self.line_position),
             "require" => Token::Require(start, self.line, self.line_position),
             "do" => Token::Do(start, self.line, self.line_position),
-            "_" => Token::Underscore(self.file_position, self.line, self.line_position),
+            "in" => Token::In(start, self.line, self.line_position),
             _ => Token::Identifier(start, self.line, self.line_position, text.to_string()),
         };
         Ok(token)
     }
 
-    fn number(&mut self, initial_char: char) -> Result<Token, LexerError> {
+    fn number(&mut self, initial_char: char) -> Result<Token, CompileError> {
         let start = self.file_position - initial_char.len_utf8();
         let mut is_float = false;
         let mut base = 10;
@@ -233,7 +241,7 @@ impl Lexer {
                     self.advance();
                 }
                 Some(c) if c.is_ascii_digit() => {
-                    let e = LexerError::Syntax(SyntaxError::InvalidNumberLiteral {
+                    let e = CompileError::Syntax(SyntaxError::InvalidNumberLiteral {
                         line: self.line,
                         file_position: self.file_position,
                         line_position: self.line_position,
@@ -243,7 +251,7 @@ impl Lexer {
                     return Err(e);
                 }
                 Some(c) if c.is_alphabetic() => {
-                    let e = LexerError::Syntax(SyntaxError::InvalidNumberLiteral {
+                    let e = CompileError::Syntax(SyntaxError::InvalidNumberLiteral {
                         line: self.line,
                         file_position: self.file_position,
                         line_position: self.line_position,
@@ -277,7 +285,7 @@ impl Lexer {
                 last_char_underscore = false;
             } else if c == '_' {
                 if last_char_underscore {
-                    let e = LexerError::Syntax(SyntaxError::UnexpectedCharacter {
+                    let e = CompileError::Syntax(SyntaxError::UnexpectedCharacter {
                         line: self.line,
                         file_position: self.file_position,
                         line_position: self.line_position,
@@ -295,7 +303,7 @@ impl Lexer {
                     is_float = true;
                     has_digits = false;
                 } else {
-                    let e = LexerError::Syntax(SyntaxError::InvalidNumberLiteral {
+                    let e = CompileError::Syntax(SyntaxError::InvalidNumberLiteral {
                         line: self.line,
                         file_position: self.file_position,
                         line_position: self.line_position,
@@ -310,7 +318,7 @@ impl Lexer {
         }
 
         if last_char_underscore || !has_digits {
-            let e = LexerError::Syntax(SyntaxError::InvalidNumberLiteral {
+            let e = CompileError::Syntax(SyntaxError::InvalidNumberLiteral {
                 line: self.line,
                 file_position: self.file_position,
                 line_position: self.line_position,
@@ -331,13 +339,14 @@ impl Lexer {
         ))
     }
 
-    fn string(&mut self) -> Result<Token, LexerError> {
+    fn string(&mut self) -> Result<Token, CompileError> {
         let start = self.file_position;
         let start_line = self.line;
         let start_line_position = self.line_position;
         let mut value = String::new();
-
+        let mut has_advanced_once = false;
         while let Some(c) = self.advance() {
+            has_advanced_once = true;
             if c == '"' {
                 break;
             }
@@ -350,7 +359,7 @@ impl Lexer {
                     Some('\"') => value.push('\"'),
                     Some(c) => value.push(c),
                     None => {
-                        let e = LexerError::Syntax(SyntaxError::UnterminatedStringLiteral {
+                        let e = CompileError::Syntax(SyntaxError::UnterminatedStringLiteral {
                             line: start_line,
                             file_position: start,
                             line_position: start_line_position,
@@ -364,13 +373,13 @@ impl Lexer {
                 if c == '\n' {
                     self.line += 1;
                     self.line_position = 0;
-                    
-                    let e = LexerError::Syntax(SyntaxError::UnterminatedStringLiteral {
+
+                    let e = CompileError::Syntax(SyntaxError::UnterminatedStringLiteral {
                         line: start_line,
                         file_position: start,
                         line_position: start_line_position,
                     });
-                    
+
                     self.reporter.report(&e);
                     return Err(e);
                 }
@@ -378,8 +387,8 @@ impl Lexer {
             }
         }
 
-        if self.peek().is_none() && !self.buffer.ends_with('"') {
-            let e = LexerError::Syntax(SyntaxError::UnterminatedStringLiteral {
+        if (self.peek().is_none() && !self.buffer.ends_with('"')) || !has_advanced_once {
+            let e = CompileError::Syntax(SyntaxError::UnterminatedStringLiteral {
                 line: start_line,
                 file_position: start,
                 line_position: start_line_position,
@@ -390,10 +399,6 @@ impl Lexer {
         }
 
         Ok(Token::String(start, self.line, self.line_position, value))
-    }
-
-    pub fn is_at_end(&self) -> bool {
-        self.buffer_eof && self.buffer_position >= self.buffer.len()
     }
 
     fn advance(&mut self) -> Option<char> {
@@ -436,6 +441,27 @@ impl Lexer {
         }
     }
 
+    fn match_next_next(&mut self, other: char) -> bool {
+        if self.buffer_eof && self.buffer_position >= self.buffer.len() {
+            return false;
+        }
+
+        if let Err(e) = self.refill_buffer() {
+            self.reporter.report(&e);
+            return false;
+        }
+
+        let mut chars = self.buffer[self.buffer_position..].chars();
+        chars.next();
+        match chars.next() {
+            Some(next) if next == other => {
+                self.advance();
+                true
+            }
+            _ => false,
+        }
+    }
+
     fn match_base_prefix(&mut self) -> bool {
         match self.peek() {
             Some('x') | Some('o') | Some('b') => {
@@ -448,49 +474,53 @@ impl Lexer {
 
     fn skip_whitespace_and_comments(&mut self) {
         loop {
-            while let Some(c) = self.peek() {
-                match c {
-                    ' ' | '\r' | '\t' => {
-                        self.advance();
-                    }
-                    '\n' => {
-                        self.line += 1;
-                        self.line_position = 0;
-                        self.advance();
-                    }
-                    '/' => {
-                        if self.match_next('/') {
-                            while let Some(c) = self.advance() {
-                                if c == '\n' {
-                                    self.line += 1;
-                                    self.line_position = 0;
-                                    break;
-                                }
-                            }
-                        } else if self.match_next('*') {
-                            while let Some(c) = self.advance() {
-                                if c == '*' && self.match_next('/') {
-                                    break;
-                                }
-                                if c == '\n' {
-                                    self.line += 1;
-                                    self.line_position = 0;
-                                }
-                            }
-                        } else {
-                            return;
-                        }
-                    }
-                    _ => return,
+            match self.peek() {
+                Some(' ') | Some('\r') | Some('\t') => {
+                    self.advance();
                 }
-            }
-            if self.peek().is_none() {
-                break;
+                Some('\n') => {
+                    self.advance();
+                    self.line += 1;
+                    self.line_position = 0;
+                }
+                Some('/') => {
+                    if self.match_next_next('/') {
+                        while let Some(c) = self.peek() {
+                            if c == '\n' {
+                                break;
+                            }
+                            self.advance();
+                        }
+                    } else if self.match_next_next('*') {
+                        while let Some(c) = self.advance() {
+                            if c == '*' {
+                                if self.match_next('/') {
+                                    break;
+                                }
+                            } else if c == '\n' {
+                                self.line += 1;
+                                self.line_position = 0;
+                            }
+                        }
+                        if self.peek().is_none() {
+                            let e = CompileError::Syntax(SyntaxError::UnterminatedComment {
+                                line: self.line,
+                                file_position: self.file_position,
+                                line_position: self.line_position,
+                            });
+                            self.reporter.report(&e);
+                        }
+                    } else {
+                        // Single '/'
+                        return;
+                    }
+                }
+                _ => return,
             }
         }
     }
 
-    fn refill_buffer(&mut self) -> Result<(), LexerError> {
+    fn refill_buffer(&mut self) -> Result<(), CompileError> {
         if self.buffer_eof {
             return Ok(());
         }

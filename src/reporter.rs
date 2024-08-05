@@ -1,4 +1,4 @@
-use crate::error::{LexerError, SyntaxError};
+use crate::error::{CompileError, SyntaxError};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -9,6 +9,7 @@ const ANSI_GREEN: &str = "\x1b[32m";
 const ANSI_BOLD: &str = "\x1b[1m";
 const ANSI_RESET: &str = "\x1b[0m";
 
+#[derive(Debug, Clone)]
 pub struct Reporter {
     file_path: String,
 }
@@ -18,9 +19,9 @@ impl Reporter {
         Reporter { file_path }
     }
 
-    pub fn report(&self, error: &LexerError) {
+    pub fn report(&self, error: &CompileError) {
         match error {
-            LexerError::Syntax(syntax_error) => match syntax_error {
+            CompileError::Syntax(syntax_error) => match syntax_error {
                 SyntaxError::UnterminatedStringLiteral {
                     line,
                     file_position,
@@ -33,8 +34,35 @@ impl Reporter {
                         *line_position,
                         Some("Add a closing quote"),
                     );
+                },
+                SyntaxError::UnterminatedComment {
+                    line,
+                    file_position,
+                    line_position
+                } => {
+                    self.print_error(
+                        &error.to_string(),
+                        *line,
+                        *file_position,
+                        *line_position,
+                        Some("Terminate the multiline comment using */")
+                    )
                 }
                 SyntaxError::UnexpectedCharacter {
+                    line,
+                    file_position,
+                    line_position,
+                    ..
+                } => {
+                    self.print_error(
+                        &error.to_string(),
+                        *line,
+                        *file_position,
+                        *line_position,
+                        None,
+                    );
+                }
+                SyntaxError::ExpectedDifferentCharacter {
                     line,
                     file_position,
                     line_position,
@@ -63,7 +91,7 @@ impl Reporter {
                     );
                 }
             },
-            LexerError::IO(io_error) => {
+            CompileError::IO(io_error) => {
                 eprintln!("IO error: {}", io_error);
             }
         }
