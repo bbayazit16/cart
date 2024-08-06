@@ -1,3 +1,10 @@
+//! This module defines the Abstract Syntax Tree (AST) of the language.
+//! 
+//! The AST represents the structure of the source code in a tree format, and allows 
+//! LLVM codegen.
+//! 
+//! Each of the structs defined in this module implements the display method, for
+//! when debugging without as many details compared to Debug are required.
 use crate::token::Token;
 
 #[derive(Debug, Clone)]
@@ -6,7 +13,6 @@ pub enum Expr {
     Binary(Box<BinaryExpr>),
     Unary(Box<UnaryExpr>),
     Literal(Literal),
-    // Grouping(Box<Expr>),
     Variable(Token),
     Assignment(Box<AssignmentExpr>),
     Call(Box<CallExpr>),
@@ -239,7 +245,7 @@ pub enum Type {
     Generic(Token, Vec<Type>),
     // <T, E> == GenericDecl([T, E])
     GenericDecl(Vec<Type>),
-    Union(Box<Type>, Box<Type>),
+    // Union(Box<Type>, Box<Type>),
 }
 
 #[derive(Debug, Clone)]

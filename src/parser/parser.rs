@@ -1,63 +1,49 @@
-use crate::ast;
-use crate::error::CompileError;
+//! This module implements a recursive descent parser. The parser takes a sequence of tokens,
+//! which are produced on the fly by the [`Lexer`], and outputs `Program`, the Abstract
+//! Syntax Tree (AST).
+//!
+//! The `Parser` struct is the main component of the parser. It uses `Lexer` to obtain tokens
+//! and reports errors via a `Reporter` instance. To implement peeking, the tokens are
+//! put into a `VecDeque`.
+//!
+//! The parser attempts to parse three main constructs: Declarations, Statements, and Expressions.
+//! 
+//! To see proper documentation of the grammar, see [`grammar.md`].
+//! 
+use crate::{ast, generate_consume_impl, generate_match_impl};
+use crate::errors::CompileError;
 use crate::lexer::Lexer;
-use crate::reporter::Reporter;
 use crate::token::Token;
 use std::collections::VecDeque;
+use crate::context::FileContext;
 
-macro_rules! generate_consume_impl {
-    ($($name:ident => $pattern:pat, $expected:expr),+ $(,)?) => {
-        use crate::error::SyntaxError;
-        impl Parser {
-            $(
-                fn $name(&mut self) -> Result<Token, CompileError> {
-                    let token = self.advance()?;
-                    match token {
-                        $pattern => Ok(token),
-                        _ => {
-                            let e = CompileError::Syntax(SyntaxError::ExpectedDifferentCharacter {
-                                file_position: token.get_file_position(),
-                                line: token.get_line(),
-                                line_position: token.get_line_position(),
-                                expected: $expected.to_string()
-                            });
-                            self.reporter.report(&e);
-                            Err(e)
-                        }
-                    }
-                }
-            )+
-        }
-    };
-}
+/// The parser's methods correspond to the grammar rules of the language and are responsible for 
+// creating the appropriate AST nodes. If a syntax error is encountered, the parser will report it 
+// and attempt to continue parsing.
 
-macro_rules! generate_match_impl {
-    ($($name:ident => $pattern:pat),+ $(,)?) => {
-        impl Parser {
-            $(
-                fn $name(&mut self) -> bool {
-                    let token = match self.peek() {
-                        Ok(token) => token,
-                        Err(_) => return false,
-                    };
-                    matches!(token, $pattern)
-                }
-            )+
-        }
-    };
-}
-
+/// The `Parser` struct is responsible for parsing a sequence of tokens into 
+/// `Program`, an Abstract Syntax Tree (AST).
+/// 
+/// Tokens are produced on the fly by the `Lexer`, and put into `VecDeque` to implement peeking. 
+/// If a syntax error occurs, the parser reports it and attempts to continue parsing.
+///
+/// # Fields
+///
+/// - `lexer`: An instance of `Lexer` that provides the tokens to be parsed.
+/// - `reporter`: An instance of `Reporter` used to report errors encountered during parsing.
+/// - `token_queue`: A `VecDeque` of `Token`s that serves as a buffer for the tokens being processed.
+///
 pub struct Parser {
     lexer: Lexer,
-    reporter: Reporter,
+    // reporter: Reporter,
     token_queue: VecDeque<Token>,
 }
 
 impl Parser {
-    pub fn new(lexer: Lexer, reporter: Reporter) -> Self {
+    /// Initialize a new parser using `FileContext`.
+    pub fn new(context: FileContext) -> Self {
         Parser {
-            lexer,
-            reporter,
+            lexer: Lexer::new(context),
             token_queue: VecDeque::new(),
         }
     }
@@ -265,7 +251,7 @@ impl Parser {
     fn parse_if_expr(&mut self) -> Result<ast::Expr, CompileError> {
         if self.match_if() {
             self.advance()?;
-            
+
             let condition = Box::new(self.parse_expr()?);
             let then_branch = Box::new(self.parse_block()?);
 
@@ -764,7 +750,7 @@ impl Parser {
         })
     }
 
-    /// Checks for '<', and returns Vec<Type> of generic params.
+    /// Checks for '<', and returns `Vec<Type>` of generic params.
     /// Consumes both '<' and '>'.
     /// If there are no generic types, returns an empty vector
     /// without consuming anything.
@@ -1024,6 +1010,11 @@ impl Parser {
     //         std::mem::discriminant(self.peek().unwrap()) == std::mem::discriminant(&expected)
     //     }
     // }
+    
+    /// Shorthand to report errors.
+    fn report(&mut self, error: &CompileError) {
+        self.lexer.report_error(error);
+    }
 
     /// Advances the parser, consuming and returning the next token.
     fn advance(&mut self) -> Result<Token, CompileError> {
@@ -1080,6 +1071,7 @@ generate_consume_impl! {
     consume_do => Token::Do(..) , "do",
     consume_fat_arrow => Token::FatArrow(..), "=>"
 }
+
 
 generate_match_impl! {
     // match_identifier => Token::Identifier(..),
