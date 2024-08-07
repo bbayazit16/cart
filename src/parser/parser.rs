@@ -3,7 +3,7 @@
 //! Syntax Tree (AST).
 //!
 //! The `Parser` struct is the main component of the parser. It uses `Lexer` to obtain tokens
-//! and reports errors via a `Reporter` instance. To implement peeking, the tokens are
+//! and reports errors via the lexer's `Reporter` instance. To implement peeking, the tokens are
 //! put into a `VecDeque`.
 //!
 //! The parser attempts to parse three main constructs: Declarations, Statements, and Expressions.
@@ -15,7 +15,7 @@ use crate::errors::CompileError;
 use crate::lexer::Lexer;
 use crate::token::Token;
 use std::collections::VecDeque;
-use crate::context::FileContext;
+use crate::context::{FileContext, FilePointer};
 
 /// The parser's methods correspond to the grammar rules of the language and are responsible for 
 // creating the appropriate AST nodes. If a syntax error is encountered, the parser will report it 
@@ -35,7 +35,6 @@ use crate::context::FileContext;
 ///
 pub struct Parser {
     lexer: Lexer,
-    // reporter: Reporter,
     token_queue: VecDeque<Token>,
 }
 
@@ -524,11 +523,11 @@ impl Parser {
             // block
             Ok(ast::Expr::Block(Box::new(self.parse_block()?)))
         } else {
-            if self.match_lbrace() {
-                // structLiteral
-                let struct_value = self.parse_struct_literal(None)?;
-                return Ok(ast::Expr::StructLiteral(Box::new(struct_value)));
-            };
+            // if self.match_lbrace() {
+            //     // structLiteral
+            //     let struct_value = self.parse_struct_literal(None)?;
+            //     return Ok(ast::Expr::StructLiteral(Box::new(struct_value)));
+            // };
 
             let ident = self.consume_identifier()?;
             // structLiteral | enumValue | IDENTIFIER | IDENTIFIER ( "." IDENTIFIER )+
@@ -538,8 +537,20 @@ impl Parser {
                 Ok(ast::Expr::EnumValue(Box::new(enum_value)))
             } else if self.match_lbrace() {
                 // structLiteral
-                let struct_value = self.parse_struct_literal(Some(ident))?;
-                Ok(ast::Expr::StructLiteral(Box::new(struct_value)))
+                let ident_position = ident.get_file_pointer();
+                let struct_or_ident = self.parse_struct_literal(Some(ident));
+                match struct_or_ident {
+                    Ok(struct_value) => Ok(ast::Expr::StructLiteral(Box::new(struct_value))),
+                    Err(_) => {
+                        // Then, something like:
+                        // if value { ... }
+                        // and `value { ... }` is being attempted to parse
+                        // as a struct.
+                        self.recover_to_position(ident_position)?;
+                        let ident = self.advance()?;
+                        Ok(ast::Expr::Variable(ident))
+                    }
+                }
             } else if self.match_dot() {
                 self.advance()?;
                 // TODO: Reporter - temp. variable
@@ -1021,6 +1032,7 @@ impl Parser {
         if let Some(token) = self.token_queue.pop_front() {
             Ok(token)
         } else {
+            // let next_token_opt = self.lexer.request_next_token();
             self.lexer.request_next_token()
         }
     }
@@ -1033,6 +1045,19 @@ impl Parser {
         }
         Ok(self.token_queue.front().unwrap())
     }
+    
+    /// Recovers to the given token.
+    fn recover_to_token(&mut self, token: &Token) -> Result<(), CompileError> {
+        self.token_queue.clear();
+        self.lexer.revert_to_position(token.get_file_pointer())
+    }
+    
+    /// Recovers to the given position.
+    fn recover_to_position(&mut self, position: FilePointer) -> Result<(), CompileError> {
+        self.token_queue.clear();
+        self.lexer.revert_to_position(position)
+    }
+    
 
     /// Delegates is_at_end function to the lexer.
     fn is_at_end(&self) -> bool {

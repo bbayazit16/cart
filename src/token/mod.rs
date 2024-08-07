@@ -74,7 +74,6 @@ define_tokens_with_display! {
     Use,        // use
     Extension,  // extension
     Implements, // implements
-    Require,    // require
     Do,         // do
     In,         // in
     Eof         // End of file

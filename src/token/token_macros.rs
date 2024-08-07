@@ -34,10 +34,10 @@ macro_rules! define_tokens {
 
         impl Token {
             /// Returns the file pointer of the token.
-            pub fn get_file_pointer(&self) -> &$crate::context::FilePointer {
+            pub fn get_file_pointer(&self) -> $crate::context::FilePointer {
                 match self {
                     $(
-                        Token::$name(pos, ..) => pos,
+                        Token::$name(pos, ..) => *pos,
                     )*
                 }
             }

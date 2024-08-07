@@ -24,10 +24,10 @@ macro_rules! generate_consume_impl {
                         $pattern => Ok(token),
                         _ => {
                             let e = CompileError::Syntax(SyntaxError::ExpectedDifferentCharacter {
-                                file_pointer: *token.get_file_pointer(),
+                                file_pointer: token.get_file_pointer(),
                                 expected: $expected.to_string()
                             });
-                            self.report(&e);
+                            // self.report(&e);
                             Err(e)
                         }
                     }

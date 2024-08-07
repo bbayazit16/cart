@@ -1,11 +1,11 @@
 //! Implements the Display trait for all AST nodes.
 //! While writing a macro for this is possible, it can quickly get hard
 //! due to the issue #35853 in the Rust compiler:
-//! 
+//!
 //! nested macros don't allow repetitions in binding patterns #35853.
-//! 
-//! For now, the display method was implemented
-//! 
+//!
+//! For now, the display method was implemented directly.
+//!
 use std::fmt;
 use crate::token::Token;
 use super::ast::*;
@@ -14,7 +14,7 @@ fn display_vec<T: fmt::Display + 'static>(v: &[T], f: &mut fmt::Formatter<'_>) -
     write!(f, "[")?;
     for (i, item) in v.iter().enumerate() {
         if i > 0 {
-            write!(f, ", ")?;
+            write!(f, ",")?;
         }
         match item {
             item if std::any::TypeId::of::<T>() == std::any::TypeId::of::<(Token, Expr)>() => {
@@ -28,7 +28,7 @@ fn display_vec<T: fmt::Display + 'static>(v: &[T], f: &mut fmt::Formatter<'_>) -
             _ => write!(f, "{}", item)?,
         }
     }
-    write!(f, "]")
+    writeln!(f, "]")
 }
 
 fn display_option<T: fmt::Display>(o: &Option<T>, f: &mut fmt::Formatter<'_>) -> fmt::Result {

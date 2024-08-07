@@ -7,10 +7,10 @@
 use crate::context::{FileContext, FilePointer};
 use crate::errors::{CompileError, SyntaxError};
 use crate::token::Token;
-use std::io::{Read, Seek};
+use std::io::{Read, Seek, SeekFrom};
 
 // Maximum buffer size for the lexer
-const BUFFER_CAPACITY: usize = 2024;
+const BUFFER_CAPACITY: usize = 2048;
 
 /// The `Lexer` struct reads characters from a buffered file reader, processes them,
 /// and produces tokens, instances of [`Token`].
@@ -33,6 +33,8 @@ const BUFFER_CAPACITY: usize = 2024;
 ///   which is for logging and reporting errors encountered.
 /// - `file_position`: The current position in the input file.
 /// - `buffer_position`: The current position within the buffer.
+/// - `buffer_start`: The starting index of the buffer. This changes when the
+///   Lexer is reverted to a position.
 /// - `buffer_eof`: A flag indicating whether the end of the input file has been
 ///   reached.
 #[derive(Debug)]
@@ -41,6 +43,7 @@ pub struct Lexer {
     context: FileContext,
     file_pointer: FilePointer,
     buffer_position: usize,
+    buffer_start: usize,
     buffer_eof: bool,
 }
 
@@ -52,6 +55,7 @@ impl Lexer {
             context,
             file_pointer: FilePointer::default(),
             buffer_position: 0,
+            buffer_start: 0,
             buffer_eof: false,
         }
     }
@@ -138,7 +142,6 @@ impl Lexer {
                     '~' => Token::Tilde(file_pointer),
                     '?' => Token::Question(file_pointer),
                     '@' => Token::At(file_pointer),
-                    '_' => Token::Underscore(file_pointer),
                     '!' => {
                         if self.match_next('=') {
                             Token::BangEqual(file_pointer)
@@ -194,23 +197,33 @@ impl Lexer {
             None => Ok(Token::Eof(file_pointer)),
         }
     }
-    
+
     /// Reverts the Lexer to the given `FilePointer`.
     /// This function is useful for recovering from errors. Since each token
     /// contains an instance of `FilePointer`, it is also possible to restore
     /// the Lexer position to a certain token.
     pub fn revert_to_position(&mut self, position: FilePointer) -> Result<(), CompileError> {
         self.file_pointer = position;
-        
-        self.buffer.clear();
-        self.buffer_position = 0;
-        self.buffer_eof = false;
-        self.context.reader().seek(std::io::SeekFrom::Start(position.file_position as u64))?;
-        self.refill_buffer()?;
+
+        // If the current position is **within** the buffer:
+        if self.file_pointer.file_position >= self.buffer_start
+            && self.file_pointer.file_position < self.buffer_start + self.buffer.len()
+        {
+            self.buffer_position = self.file_pointer.file_position - self.buffer_start;
+        } else {
+            // The current position is **not within** the buffer!:
+            self.buffer.clear();
+            self.buffer_start = self.file_pointer.file_position;
+            self.buffer_position = 0;
+            self.buffer_eof = false;
+            self.context
+                .reader()
+                .seek(SeekFrom::Start(self.file_pointer.file_position as u64))?;
+            self.refill_buffer()?;
+        }
 
         Ok(())
     }
-
 
     /// Lex an identifier or a keyword.
     fn identifier_or_keyword(&mut self, initial_char: char) -> Result<Token, CompileError> {
@@ -224,7 +237,7 @@ impl Lexer {
         self.advance_while_alphanumeric();
 
         let end = self.file_pointer.file_position;
-        let text = &self.buffer[start..end];
+        let text = self.unchecked_index_into_buffer(start, end);
         let token = match text {
             "enum" => Token::Enum(starting_file_position),
             "error" => Token::Error(starting_file_position),
@@ -248,9 +261,9 @@ impl Lexer {
             "use" => Token::Use(starting_file_position),
             "extension" => Token::Extension(starting_file_position),
             "implements" => Token::Implements(starting_file_position),
-            "require" => Token::Require(starting_file_position),
             "do" => Token::Do(starting_file_position),
             "in" => Token::In(starting_file_position),
+            "_" => Token::Underscore(starting_file_position),
             _ => Token::Identifier(starting_file_position, text.to_string()),
         };
         Ok(token)
@@ -331,7 +344,9 @@ impl Lexer {
                 } else {
                     let e = CompileError::Syntax(SyntaxError::InvalidNumberLiteral {
                         file_pointer: self.file_pointer,
-                        literal: self.buffer[start..self.file_pointer.file_position].to_string(),
+                        literal: self
+                            .unchecked_index_into_buffer(start, self.file_pointer.file_position)
+                            .to_string(),
                     });
                     self.report_error(&e);
                     return Err(e);
@@ -342,11 +357,15 @@ impl Lexer {
         }
 
         // This prevents things like 0xfg, where the first character is valid but the rest isn't.
+        // Normally, when peeked, the next character should either not exist, be EOF, newline,
+        // or space. If the next character is a number, then there is something wrong.
         if let Some(c) = self.peek() {
-            if c.is_alphabetic() {
+            if c.is_alphanumeric() {
                 let e = CompileError::Syntax(SyntaxError::InvalidNumberLiteral {
                     file_pointer: self.file_pointer,
-                    literal: self.buffer[start..self.file_pointer.file_position + 1].to_string(),
+                    literal: self
+                        .unchecked_index_into_buffer(start, self.file_pointer.file_position + 1)
+                        .to_string(),
                 });
 
                 self.report_error(&e);
@@ -357,14 +376,19 @@ impl Lexer {
         if last_char_underscore || !has_digits {
             let e = CompileError::Syntax(SyntaxError::InvalidNumberLiteral {
                 file_pointer: self.file_pointer,
-                literal: self.buffer[start..self.file_pointer.file_position].to_string(),
+                literal: self
+                    .unchecked_index_into_buffer(start, self.file_pointer.file_position)
+                    .to_string(),
             });
 
             self.report_error(&e);
             return Err(e);
         }
 
-        let text = self.buffer[start..self.file_pointer.file_position].replace('_', "");
+        let text = self
+            .unchecked_index_into_buffer(start, self.file_pointer.file_position)
+            .to_string()
+            .replace('_', "");
         Ok(Token::Number(
             FilePointer {
                 file_position: start,
@@ -449,6 +473,16 @@ impl Lexer {
         }
     }
 
+    /// Indexes the buffer as [start, end).
+    /// This method is preferred over `self.buffer` as it also takes starting point
+    /// into account.
+    fn unchecked_index_into_buffer(&self, start: usize, end: usize) -> &str {
+        let buffer_start = start - self.buffer_start;
+        let buffer_end = end - self.buffer_start;
+
+        &self.buffer[buffer_start..buffer_end]
+    }
+
     /// Advances the lexer by one position, returning the consumed char.
     fn advance(&mut self) -> Option<char> {
         if self.buffer_eof && self.buffer_position >= self.buffer.len() {
@@ -460,7 +494,10 @@ impl Lexer {
             return None;
         }
 
-        let ch = self.buffer[self.buffer_position..].chars().next().unwrap();
+        let ch = self.buffer[self.buffer_position - self.buffer_start..]
+            .chars()
+            .next()
+            .unwrap();
         self.buffer_position += ch.len_utf8();
         self.file_pointer.file_position += ch.len_utf8();
         self.file_pointer.line_position += ch.len_utf8();
@@ -478,7 +515,9 @@ impl Lexer {
             return None;
         }
 
-        self.buffer[self.buffer_position..].chars().next()
+        self.buffer[self.buffer_position - self.buffer_start..]
+            .chars()
+            .next()
     }
 
     /// Matches the next character in the lexer.
@@ -505,7 +544,7 @@ impl Lexer {
             return false;
         }
 
-        let mut chars = self.buffer[self.buffer_position..].chars();
+        let mut chars = self.buffer[self.buffer_position - self.buffer_start..].chars();
         chars.next();
         match chars.next() {
             Some(next) if next == other => {
@@ -602,7 +641,6 @@ impl Lexer {
 
         let mut temp_buffer = vec![0; BUFFER_CAPACITY];
         let bytes_read = self.context.reader().read(&mut temp_buffer)?;
-
         if bytes_read == 0 {
             self.buffer_eof = true;
         } else {

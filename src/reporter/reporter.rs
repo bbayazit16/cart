@@ -35,7 +35,9 @@ impl Reporter {
     /// Initialize a reporter instance by passing in `file_path`,
     /// which must implement AsRef<Path>.
     pub fn new<P: AsRef<Path>>(file_path: P) -> Reporter {
-        Reporter { file_path: file_path.as_ref().to_path_buf() }
+        Reporter {
+            file_path: file_path.as_ref().to_path_buf(),
+        }
     }
 
     /// Report a `CompileError`.
@@ -78,8 +80,8 @@ impl Reporter {
         file_pointer: FilePointer,
         help_message: Option<S>,
     ) {
-        let reader = match File::open(&self.file_path) {
-            Ok(file) => BufReader::new(file),
+        let file = match File::open(&self.file_path) {
+            Ok(file) => file,
             Err(e) => {
                 Self::report_io_error(
                     &e,
@@ -96,12 +98,10 @@ impl Reporter {
             }
         };
 
-        let lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
-
-        let line_number_width = lines.len().to_string().len();
+        let reader = BufReader::new(file);
 
         self.print_error_header(&message, &file_pointer);
-        self.print_error_lines(&lines, file_pointer, line_number_width);
+        self.print_error_lines(reader, file_pointer);
         if let Some(help) = help_message {
             self.print_help_message(help);
         }
@@ -126,48 +126,64 @@ impl Reporter {
         eprintln!();
     }
 
-    /// Prints the main error.
-    fn print_error_lines(
-        &self,
-        lines: &[String],
-        file_pointer: FilePointer,
-        line_number_width: usize,
-    ) {
+    /// Prints the error lines to provide context and highlight the error.
+    fn print_error_lines(&self, mut reader: BufReader<File>, file_pointer: FilePointer) {
         let start_line = if file_pointer.line > LINE_CONTEXT {
             file_pointer.line - LINE_CONTEXT
         } else {
             1
         };
 
-        let end_line = std::cmp::min(file_pointer.line + LINE_CONTEXT, lines.len());
+        let end_line = file_pointer.line + LINE_CONTEXT;
 
-        for (i, line_content) in lines[start_line - 1..end_line].iter().enumerate() {
-            let current_line = start_line + i;
-            let prefix = if current_line == file_pointer.line {
-                format!("{}{}>{}", ANSI_BOLD, ANSI_RED, ANSI_RESET)
-            } else {
-                " ".to_string()
-            };
+        let mut current_line = 1;
+        let mut line = String::new();
 
+        while current_line <= end_line {
+            match reader.read_line(&mut line) {
+                Ok(0) => break, // EOF
+                Ok(_) => {
+                    if current_line >= start_line {
+                        self.print_line(current_line, &line, file_pointer);
+                    }
+                    current_line += 1;
+                    line.clear();
+                }
+                Err(ref io_err) => {
+                    Self::report_io_error::<&str>(io_err, None);
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Prints a single line of error.
+    fn print_line(&self, line_number: usize, line_content: &str, file_pointer: FilePointer) {
+        let line_number_width = file_pointer.line.to_string().len();
+        let prefix = if line_number == file_pointer.line {
+            format!("{}{}>{}", ANSI_BOLD, ANSI_RED, ANSI_RESET)
+        } else {
+            " ".to_string()
+        };
+
+        eprintln!(
+            "{}{:>width$} | {}",
+            prefix,
+            line_number,
+            line_content.trim_end(),
+            width = line_number_width
+        );
+
+        if line_number == file_pointer.line {
+            let padding = " ".repeat(file_pointer.line_position - 1);
+            let caret = format!("{}{}^{}", ANSI_BOLD, ANSI_RED, ANSI_RESET);
             eprintln!(
-                "{}{:>width$} | {}",
-                prefix,
-                current_line,
-                line_content,
+                " {:>width$} | {}{}",
+                "",
+                padding,
+                caret,
                 width = line_number_width
             );
-
-            if current_line == file_pointer.line {
-                let padding = " ".repeat(file_pointer.line_position - 1);
-                let caret = format!("{}{}^{}", ANSI_BOLD, ANSI_RED, ANSI_RESET);
-                eprintln!(
-                    " {:>width$} | {}{}",
-                    "",
-                    padding,
-                    caret,
-                    width = line_number_width
-                );
-            }
         }
     }
 
