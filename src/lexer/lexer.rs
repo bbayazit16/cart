@@ -65,12 +65,12 @@ impl Lexer {
     ///
     /// Advances the buffer position, and reports errors if any has occurred
     /// during the lexing process.
-    pub fn request_next_token(&mut self) -> Result<Token, CompileError> {
+    pub fn request_next_token(&mut self) -> Token {
         self.skip_whitespace_and_comments();
         let file_pointer = self.file_pointer;
         match self.advance() {
             Some(current_char) => {
-                let token = match current_char {
+                match current_char {
                     '(' => Token::LeftParen(file_pointer),
                     ')' => Token::RightParen(file_pointer),
                     '{' => Token::LeftBrace(file_pointer),
@@ -173,7 +173,7 @@ impl Lexer {
                         }
                     }
                     _ => {
-                        return if current_char.is_alphabetic() || current_char == '_' {
+                        if current_char.is_alphabetic() || current_char == '_' {
                             self.identifier_or_keyword(current_char)
                         } else if current_char.is_ascii_digit()
                             || (current_char == '0' && self.match_base_prefix())
@@ -188,13 +188,13 @@ impl Lexer {
                             });
                             self.report_error(&e);
 
-                            Err(e)
+                            // Error recovery: attempt to parse as an identifier
+                            self.identifier_or_keyword(current_char)
                         }
                     }
-                };
-                Ok(token)
+                }
             }
-            None => Ok(Token::Eof(file_pointer)),
+            None => Token::Eof(file_pointer),
         }
     }
 
@@ -224,9 +224,14 @@ impl Lexer {
 
         Ok(())
     }
+    
+    /// Return the current file pointer.
+    pub fn file_pointer(&self) -> FilePointer {
+        self.file_pointer
+    }
 
     /// Lex an identifier or a keyword.
-    fn identifier_or_keyword(&mut self, initial_char: char) -> Result<Token, CompileError> {
+    fn identifier_or_keyword(&mut self, initial_char: char) -> Token {
         let start = self.file_pointer.file_position - initial_char.len_utf8();
         let starting_file_position = FilePointer {
             file_position: start,
@@ -238,7 +243,7 @@ impl Lexer {
 
         let end = self.file_pointer.file_position;
         let text = self.unchecked_index_into_buffer(start, end);
-        let token = match text {
+        match text {
             "enum" => Token::Enum(starting_file_position),
             "error" => Token::Error(starting_file_position),
             "and" => Token::And(starting_file_position),
@@ -265,12 +270,11 @@ impl Lexer {
             "in" => Token::In(starting_file_position),
             "_" => Token::Underscore(starting_file_position),
             _ => Token::Identifier(starting_file_position, text.to_string()),
-        };
-        Ok(token)
+        }
     }
 
     /// Lex a number. Return CompileError if any error has occurred.
-    fn number(&mut self, initial_char: char) -> Result<Token, CompileError> {
+    fn number(&mut self, initial_char: char) -> Token {
         let start = self.file_pointer.file_position - initial_char.len_utf8();
         let line_start = self.file_pointer.line_position - initial_char.len_utf8();
 
@@ -292,16 +296,23 @@ impl Lexer {
                     self.advance();
                 }
                 Some(c) if c.is_ascii_digit() || c.is_alphabetic() => {
+                    // Unknown base
                     let e = CompileError::Syntax(SyntaxError::InvalidNumberLiteral {
                         file_pointer: self.file_pointer,
                         literal: format!("0{}", c),
                     });
                     self.report_error(&e);
-                    return Err(e);
+
+                    // Error recovery:
+
+                    // Consume the unknown base
+                    self.advance();
+                    // Try parsing the number again
+                    return self.recover_potential_number(line_start, is_float, c);
                 }
                 _ => {
                     // 0
-                    return Ok(Token::Number(
+                    return Token::Number(
                         FilePointer {
                             file_position: start,
                             line_position: line_start,
@@ -309,7 +320,7 @@ impl Lexer {
                         },
                         "0".to_string(),
                         false,
-                    ));
+                    );
                 }
             }
         }
@@ -326,13 +337,15 @@ impl Lexer {
                 last_char_underscore = false;
             } else if c == '_' {
                 if last_char_underscore {
+                    // Two consecutive __ encountered
                     let e = CompileError::Syntax(SyntaxError::UnexpectedCharacter {
                         file_pointer: self.file_pointer,
                         character: c,
                     });
 
                     self.report_error(&e);
-                    return Err(e);
+
+                    // Error recovery: just ignore and parse things like 4__0 as 4.
                 }
                 last_char_underscore = true;
                 self.advance();
@@ -342,6 +355,7 @@ impl Lexer {
                     is_float = true;
                     has_digits = false;
                 } else {
+                    // Not a valid digit
                     let e = CompileError::Syntax(SyntaxError::InvalidNumberLiteral {
                         file_pointer: self.file_pointer,
                         literal: self
@@ -349,7 +363,10 @@ impl Lexer {
                             .to_string(),
                     });
                     self.report_error(&e);
-                    return Err(e);
+
+                    // Error recovery: treat as integer, ignoring the dot
+                    self.advance();
+                    break;
                 }
             } else {
                 break;
@@ -361,6 +378,7 @@ impl Lexer {
         // or space. If the next character is a number, then there is something wrong.
         if let Some(c) = self.peek() {
             if c.is_alphanumeric() {
+                dbg!("error occurring");
                 let e = CompileError::Syntax(SyntaxError::InvalidNumberLiteral {
                     file_pointer: self.file_pointer,
                     literal: self
@@ -369,7 +387,9 @@ impl Lexer {
                 });
 
                 self.report_error(&e);
-                return Err(e);
+
+                // Error recovery: Ignore the invalid suffix
+                return self.recover_potential_number(line_start, is_float, c);
             }
         }
 
@@ -382,14 +402,25 @@ impl Lexer {
             });
 
             self.report_error(&e);
-            return Err(e);
+
+            // Error recovery: Already handled in the previous step.
+            // There are no digits, so return 0.
+            return Token::Number(
+                FilePointer {
+                    file_position: start,
+                    line_position: line_start,
+                    ..self.file_pointer
+                },
+                "0".into(),
+                false,
+            );
         }
 
         let text = self
             .unchecked_index_into_buffer(start, self.file_pointer.file_position)
             .to_string()
             .replace('_', "");
-        Ok(Token::Number(
+        Token::Number(
             FilePointer {
                 file_position: start,
                 line_position: line_start,
@@ -397,11 +428,42 @@ impl Lexer {
             },
             text,
             is_float,
-        ))
+        )
+    }
+
+    /// Try and recover a number or an identifier if an error has occurred.
+    fn recover_potential_number(&mut self, line_start: usize, is_float: bool, c: char) -> Token {
+        let start = self.file_pointer;
+        return if c.is_ascii_digit() {
+            while let Some(next) = self.peek() {
+                if next.is_whitespace() || !next.is_alphanumeric() {
+                    break;
+                }
+                self.advance();
+            }
+            let end = self.file_pointer.file_position;
+            let text = self.unchecked_index_into_buffer(start.file_position, end);
+            let all_ascii_digit = text.chars().all(|c| c.is_ascii_digit());
+            if all_ascii_digit {
+                Token::Number(
+                    FilePointer {
+                        file_position: start.file_position,
+                        line_position: line_start,
+                        ..self.file_pointer
+                    },
+                    text.into(),
+                    is_float,
+                )
+            } else {
+                self.revert_lex_identifier(start, c)
+            }
+        } else {
+            self.revert_lex_identifier(self.file_pointer, c)
+        };
     }
 
     /// Lex a string. Return a CompileError if any error has occurred.
-    fn string(&mut self) -> Result<Token, CompileError> {
+    fn string(&mut self) -> Token {
         let start = self.file_pointer;
         let mut value = String::new();
         let mut has_advanced_once = false;
@@ -424,7 +486,7 @@ impl Lexer {
                         });
 
                         self.report_error(&e);
-                        return Err(e);
+                        // Just ignore the char
                     }
                 }
             } else {
@@ -437,7 +499,9 @@ impl Lexer {
                     });
 
                     self.report_error(&e);
-                    return Err(e);
+                    // Ignore the line end, and terminate the string here
+                    value.push('"');
+                    break;
                 }
                 value.push(c);
             }
@@ -449,16 +513,16 @@ impl Lexer {
             });
 
             self.report_error(&e);
-            return Err(e);
+            // Error already recovered, so it'll always end with "
         }
 
-        Ok(Token::String(
+        Token::String(
             FilePointer {
                 file_position: start.file_position,
                 ..self.file_pointer
             },
             value,
-        ))
+        )
     }
 
     /// Advances the lexer while the current char
@@ -470,6 +534,18 @@ impl Lexer {
             } else {
                 break;
             }
+        }
+    }
+
+    /// Revert to file pointer and attempt to lex an identifier.
+    /// Useful for error recovery.
+    fn revert_lex_identifier(&mut self, file_pointer: FilePointer, else_char: char) -> Token {
+        match self.revert_to_position(file_pointer) {
+            Err(ref e) => {
+                self.report_error(e);
+                Token::Eof(file_pointer)
+            }
+            Ok(_) => self.identifier_or_keyword(else_char),
         }
     }
 

@@ -7,34 +7,36 @@
 //! put into a `VecDeque`.
 //!
 //! The parser attempts to parse three main constructs: Declarations, Statements, and Expressions.
-//! 
+//!
 //! To see proper documentation of the grammar, see [`grammar.md`].
-//! 
-use crate::{ast, generate_consume_impl, generate_match_impl};
+//!
+use crate::ast::NotRecovered;
+use crate::context::{FileContext, FilePointer};
 use crate::errors::CompileError;
 use crate::lexer::Lexer;
 use crate::token::Token;
+use crate::{ast, generate_consume_impl, generate_match_impl, report};
 use std::collections::VecDeque;
-use crate::context::{FileContext, FilePointer};
 
-/// The parser's methods correspond to the grammar rules of the language and are responsible for 
-// creating the appropriate AST nodes. If a syntax error is encountered, the parser will report it 
+/// The parser's methods correspond to the grammar rules of the language and are responsible for
+// creating the appropriate AST nodes. If a syntax error is encountered, the parser will report it
 // and attempt to continue parsing.
 
-/// The `Parser` struct is responsible for parsing a sequence of tokens into 
+/// The `Parser` struct is responsible for parsing a sequence of tokens into
 /// `Program`, an Abstract Syntax Tree (AST).
-/// 
-/// Tokens are produced on the fly by the `Lexer`, and put into `VecDeque` to implement peeking. 
+///
+/// Tokens are produced on the fly by the `Lexer`, and put into `VecDeque` to implement peeking.
 /// If a syntax error occurs, the parser reports it and attempts to continue parsing.
 ///
 /// # Fields
 ///
 /// - `lexer`: An instance of `Lexer` that provides the tokens to be parsed.
-/// - `reporter`: An instance of `Reporter` used to report errors encountered during parsing.
+/// - `errors`: A vector of compile-time errors that occurred when parsing.
 /// - `token_queue`: A `VecDeque` of `Token`s that serves as a buffer for the tokens being processed.
 ///
 pub struct Parser {
     lexer: Lexer,
+    errors: Vec<CompileError>,
     token_queue: VecDeque<Token>,
 }
 
@@ -43,38 +45,80 @@ impl Parser {
     pub fn new(context: FileContext) -> Self {
         Parser {
             lexer: Lexer::new(context),
+            errors: Vec::new(),
             token_queue: VecDeque::new(),
         }
     }
 
     /// Parses the entire program, returning CompileError or
     /// the output Program, a vector of declaration ASTs.
-    pub fn parse(&mut self) -> Result<ast::Program, CompileError> {
+    pub fn parse(&mut self) -> ast::Program {
         let mut declarations = Vec::new();
-        while !(self.is_at_end() || self.match_eof()) {
+        while !self.is_at_end() {
+            let start_position = self.peek().unwrap().get_file_pointer();
             match self.parse_declaration() {
                 Ok(declaration) => declarations.push(declaration),
-                Err(e) => return Err(e),
+                Err(e) => {
+                    self.errors.push(e);
+                    self.recover_to_position(start_position).unwrap();
+                    self.synchronize();
+                }
             }
             self.clear_queue();
         }
-        Ok(ast::Program { declarations })
+        for error in self.errors.iter() {
+            self.lexer.report_error(error);
+        }
+        ast::Program { declarations }
+    }
+
+    /// Synchronizes the parser into the next correct position,
+    /// which would be the point where a major construct is encountered.
+    fn synchronize(&mut self) {
+        // let previous = self.advance();
+
+        while !self.is_at_end() {
+            // if matches!(previous, Token::Semicolon(..)) { return };
+            if self.match_semicolon() {
+                self.advance();
+                return;
+            }
+            match self.peek() {
+                Ok(Token::Struct(..))
+                | Ok(Token::Enum(..))
+                | Ok(Token::Func(..))
+                | Ok(Token::Let(..))
+                | Ok(Token::For(..))
+                | Ok(Token::While(..))
+                | Ok(Token::If(..))
+                | Ok(Token::Return(..)) => return,
+                _ => {
+                    self.advance();
+                }
+            }
+        }
     }
 
     /// Parse and return a declaration.
     fn parse_declaration(&mut self) -> Result<ast::Declaration, CompileError> {
         match self.peek()? {
-            Token::Enum(..) => Ok(ast::Declaration::EnumDecl(Box::new(self.parse_enum()?))),
-            Token::Error(..) => Ok(ast::Declaration::ErrorDecl(Box::new(self.parse_error()?))),
-            Token::Func(..) => Ok(ast::Declaration::FunctionDecl(Box::new(
-                self.parse_function()?,
+            Token::Enum(..) => Ok(ast::Declaration::EnumDecl(Box::new(
+                self.parse_enum()?
             ))),
-            Token::Struct(..) => Ok(ast::Declaration::StructDecl(Box::new(self.parse_struct()?))),
+            Token::Error(..) => Ok(ast::Declaration::ErrorDecl(Box::new(
+                self.parse_error()?
+            ))),
+            Token::Func(..) => Ok(ast::Declaration::FunctionDecl(Box::new(
+                self.parse_function()?
+            ))),
+            Token::Struct(..) => Ok(ast::Declaration::StructDecl(Box::new(
+                self.parse_struct()?
+            ))),
             Token::Extension(..) => Ok(ast::Declaration::ExtensionDecl(Box::new(
-                self.parse_extension()?,
+                self.parse_extension()?
             ))),
             _ => Ok(ast::Declaration::StatementDecl(Box::new(
-                self.parse_stmt()?,
+                self.parse_stmt()?
             ))),
         }
     }
@@ -88,12 +132,18 @@ impl Parser {
     //                | doWhileStmt ;
     fn parse_stmt(&mut self) -> Result<ast::Stmt, CompileError> {
         match self.peek()? {
-            Token::Let(..) => Ok(ast::Stmt::Let(Box::new(self.parse_let_stmt()?))),
-            Token::Use(..) => self.parse_use_stmt(),
-            Token::Return(..) => self.parse_return_stmt(),
-            Token::For(..) => Ok(ast::Stmt::For(Box::new(self.parse_for_stmt()?))),
+            Token::Let(..) => Ok(ast::Stmt::Let(Box::new(
+                self.parse_let_stmt()?
+            ))),
+            Token::Use(..) => Ok(self.parse_use_stmt()?),
+            Token::Return(..) => Ok(self.parse_return_stmt()?),
+            Token::For(..) => Ok(ast::Stmt::For(Box::new(
+                self.parse_for_stmt()?
+            ))),
             Token::While(..) => Ok(ast::Stmt::While(Box::new(self.parse_while_stmt()?))),
-            Token::Do(..) => Ok(ast::Stmt::DoWhile(Box::new(self.parse_do_while_stmt()?))),
+            Token::Do(..) => Ok(ast::Stmt::DoWhile(Box::new(
+                self.parse_do_while_stmt()?
+            ))),
             _ => self.parse_expr_stmt(),
         }
     }
@@ -136,7 +186,7 @@ impl Parser {
     fn parse_for_stmt(&mut self) -> Result<ast::ForStmt, CompileError> {
         self.consume_for()?;
         let iterator = if self.match_underscore() {
-            self.advance()?;
+            self.advance();
             None
         } else {
             Some(self.consume_identifier()?)
@@ -171,9 +221,9 @@ impl Parser {
         self.consume_use()?;
         let mut path = vec![self.consume_identifier()?];
         while self.match_colon_colon() {
-            self.advance()?;
+            self.advance();
             if self.match_star() {
-                path.push(self.advance()?);
+                path.push(self.advance());
                 break;
             } else {
                 path.push(self.consume_identifier()?);
@@ -186,16 +236,24 @@ impl Parser {
     // letStmt → "let" "mut"? IDENTIFIER ( ":" type )? "=" expression ";" ;
     fn parse_let_stmt(&mut self) -> Result<ast::LetStmt, CompileError> {
         self.consume_let()?;
+        // if let Err(e) = self.consume_let() {
+        //     self.errors.push(e);
+        //     self.synchronize();
+        //     dbg!(&self.peek());
+        //     // return
+        // }
+
         let is_mut = if self.match_mut() {
-            self.advance()?;
+            self.advance();
             true
         } else {
             false
         };
 
+        // let name = self.consume_identifier()?;
         let name = self.consume_identifier()?;
         let set_type = if self.match_colon() {
-            self.advance()?;
+            self.advance();
             Some(self.parse_type()?)
         } else {
             None
@@ -230,7 +288,7 @@ impl Parser {
 
         if self.match_equal() {
             // Assignment - convert from r-value to l-value
-            self.advance()?;
+            self.advance();
             // TODO: check parse_expr, could replace parse_expr with
             // parse_if_expr, and skip parse_assignment later on
             let r_value = Box::new(self.parse_expr()?);
@@ -249,21 +307,21 @@ impl Parser {
     //                | matchExpr ;
     fn parse_if_expr(&mut self) -> Result<ast::Expr, CompileError> {
         if self.match_if() {
-            self.advance()?;
+            self.advance();
 
             let condition = Box::new(self.parse_expr()?);
             let then_branch = Box::new(self.parse_block()?);
 
             let mut elif_branches = Vec::new();
             while self.match_elif() {
-                self.advance()?;
+                self.advance();
                 let elif_condition = self.parse_expr()?;
                 let block = self.parse_block()?;
                 elif_branches.push((elif_condition, block));
             }
 
             let else_branch = if self.match_else() {
-                self.advance()?;
+                self.advance();
                 Some(Box::new(self.parse_block()?))
             } else {
                 None
@@ -284,7 +342,7 @@ impl Parser {
     //                | logicalOr ;
     fn parse_match_expr(&mut self) -> Result<ast::Expr, CompileError> {
         if self.match_match() {
-            self.advance()?;
+            self.advance();
             let value = Box::new(self.parse_expr()?);
 
             // TODO EOF
@@ -309,7 +367,7 @@ impl Parser {
     fn parse_match_arm_list(&mut self) -> Result<Vec<ast::MatchArm>, CompileError> {
         let mut arms = vec![self.parse_match_arm()?];
         while self.match_comma() {
-            self.advance()?;
+            self.advance();
             arms.push(self.parse_match_arm()?);
         }
         Ok(arms)
@@ -330,12 +388,12 @@ impl Parser {
     //                | "_" ;
     fn parse_pattern(&mut self) -> Result<ast::Pattern, CompileError> {
         if self.match_underscore() {
-            self.advance()?;
+            self.advance();
             Ok(ast::Pattern::Wildcard)
         } else {
             let ident = self.consume_identifier()?;
             if self.match_lparen() {
-                self.advance()?;
+                self.advance();
                 let ident_list = self.parse_ident_list()?;
                 self.consume_rparen()?;
                 Ok(ast::Pattern::EnumOrStructVariant(
@@ -344,7 +402,7 @@ impl Parser {
                     ident_list,
                 ))
             } else if self.match_lbrace() {
-                self.advance()?;
+                self.advance();
                 let ident_list = self.parse_ident_list()?;
                 self.consume_rbrace()?;
                 Ok(ast::Pattern::EnumOrStructVariant(
@@ -362,7 +420,7 @@ impl Parser {
     fn parse_ident_list(&mut self) -> Result<Vec<Token>, CompileError> {
         let mut ident_list = vec![self.consume_identifier()?];
         while self.match_comma() {
-            self.advance()?;
+            self.advance();
             ident_list.push(self.consume_identifier()?);
         }
         Ok(ident_list)
@@ -372,7 +430,7 @@ impl Parser {
     fn parse_logical_or(&mut self) -> Result<ast::Expr, CompileError> {
         let mut left = self.parse_logical_and()?;
         while self.match_pipe_pipe() {
-            let operator = self.advance()?;
+            let operator = self.advance();
             let right = Box::new(self.parse_logical_and()?);
             left = ast::Expr::Binary(Box::new(ast::BinaryExpr {
                 left: Box::new(left),
@@ -387,7 +445,7 @@ impl Parser {
     fn parse_logical_and(&mut self) -> Result<ast::Expr, CompileError> {
         let mut left = self.parse_equality()?;
         while self.match_ampersand_ampersand() {
-            let operator = self.advance()?;
+            let operator = self.advance();
             let right = Box::new(self.parse_equality()?);
             left = ast::Expr::Binary(Box::new(ast::BinaryExpr {
                 left: Box::new(left),
@@ -402,7 +460,7 @@ impl Parser {
     fn parse_equality(&mut self) -> Result<ast::Expr, CompileError> {
         let mut left = self.parse_comparison()?;
         while self.match_bang_equal() || self.match_equal_equal() {
-            let operator = self.advance()?;
+            let operator = self.advance();
             let right = Box::new(self.parse_comparison()?);
             left = ast::Expr::Binary(Box::new(ast::BinaryExpr {
                 left: Box::new(left),
@@ -417,7 +475,7 @@ impl Parser {
     fn parse_comparison(&mut self) -> Result<ast::Expr, CompileError> {
         let mut left = self.parse_term()?;
         while self.match_ge() || self.match_geq() || self.match_le() || self.match_leq() {
-            let operator = self.advance()?;
+            let operator = self.advance();
             let right = Box::new(self.parse_term()?);
             left = ast::Expr::Binary(Box::new(ast::BinaryExpr {
                 left: Box::new(left),
@@ -432,7 +490,7 @@ impl Parser {
     fn parse_term(&mut self) -> Result<ast::Expr, CompileError> {
         let mut left = self.parse_factor()?;
         while self.match_minus() || self.match_plus() {
-            let operator = self.advance()?;
+            let operator = self.advance();
             let right = Box::new(self.parse_factor()?);
             left = ast::Expr::Binary(Box::new(ast::BinaryExpr {
                 left: Box::new(left),
@@ -447,7 +505,7 @@ impl Parser {
     fn parse_factor(&mut self) -> Result<ast::Expr, CompileError> {
         let mut left = self.parse_unary()?;
         while self.match_slash() || self.match_star() {
-            let operator = self.advance()?;
+            let operator = self.advance();
             let right = Box::new(self.parse_unary()?);
             left = ast::Expr::Binary(Box::new(ast::BinaryExpr {
                 left: Box::new(left),
@@ -461,7 +519,7 @@ impl Parser {
     // unary          → ( "!" | "-" ) unary | call ;
     fn parse_unary(&mut self) -> Result<ast::Expr, CompileError> {
         if self.match_bang() || self.match_minus() {
-            let operator = self.advance()?;
+            let operator = self.advance();
             let right = self.parse_unary()?;
             Ok(ast::Expr::Unary(Box::new(ast::UnaryExpr {
                 operator,
@@ -478,15 +536,19 @@ impl Parser {
         let primary = self.parse_primary()?;
         // TODO: probably not necessary, already delegated to primary above
         let callee = if self.match_dot() {
-            self.advance()?;
+            self.advance();
             ast::Expr::StructAccess(Box::new(self.partial_parse_struct_access(primary)?))
         } else {
             primary
         };
-
+        
         if self.match_lparen() {
-            self.advance()?;
-            let arguments = self.parse_arguments()?;
+            self.advance();
+            let arguments = if self.match_rparen() {
+                Vec::new()
+            } else {
+                self.parse_arguments()?
+            };
             self.consume_rparen()?;
             Ok(ast::Expr::Call(Box::new(ast::CallExpr {
                 callee,
@@ -506,16 +568,16 @@ impl Parser {
     fn parse_primary(&mut self) -> Result<ast::Expr, CompileError> {
         if self.match_bool() {
             // "true" | "false"
-            Ok(ast::Expr::Literal(ast::Literal::Bool(self.advance()?)))
+            Ok(ast::Expr::Literal(ast::Literal::Bool(self.advance())))
         } else if self.match_number() {
             // NUMBER
-            Ok(ast::Expr::Literal(ast::Literal::Number(self.advance()?)))
+            Ok(ast::Expr::Literal(ast::Literal::Number(self.advance())))
         } else if self.match_string() {
             // STRING
-            Ok(ast::Expr::Literal(ast::Literal::String(self.advance()?)))
+            Ok(ast::Expr::Literal(ast::Literal::String(self.advance())))
         } else if self.match_lparen() {
             // "(" expression ")"
-            self.advance()?;
+            self.advance();
             let expr = self.parse_expr()?;
             self.consume_rparen()?;
             Ok(expr)
@@ -540,28 +602,30 @@ impl Parser {
                 let ident_position = ident.get_file_pointer();
                 let struct_or_ident = self.parse_struct_literal(Some(ident));
                 match struct_or_ident {
-                    Ok(struct_value) => Ok(ast::Expr::StructLiteral(Box::new(struct_value))),
-                    Err(_) => {
+                    Ok(struct_value) if !struct_value.is_not_recovered() => {
+                        Ok(ast::Expr::StructLiteral(Box::new(struct_value)))
+                    }
+                    _ => {
                         // Then, something like:
                         // if value { ... }
                         // and `value { ... }` is being attempted to parse
                         // as a struct.
                         self.recover_to_position(ident_position)?;
-                        let ident = self.advance()?;
-                        Ok(ast::Expr::Variable(ident))
+                        let ident = self.advance();
+                        Ok(ast::Expr::Variable(ident, None))
                     }
                 }
             } else if self.match_dot() {
-                self.advance()?;
+                self.advance();
                 // TODO: Reporter - temp. variable
                 // TODO: Handle expr properly
                 // IDENTIFIER ( "." IDENTIFIER )+
                 Ok(ast::Expr::StructAccess(Box::new(
-                    self.partial_parse_struct_access(ast::Expr::Variable(ident))?,
+                    self.partial_parse_struct_access(ast::Expr::Variable(ident, None))?,
                 )))
             } else {
                 // IDENTIFIER
-                Ok(ast::Expr::Variable(ident))
+                Ok(ast::Expr::Variable(ident, None))
             }
         }
     }
@@ -574,7 +638,7 @@ impl Parser {
         // TODO: Handle expr properly
         let mut fields = vec![self.consume_identifier()?];
         while self.match_dot() {
-            self.advance()?;
+            self.advance();
             fields.push(self.consume_identifier()?);
         }
 
@@ -606,7 +670,7 @@ impl Parser {
     fn parse_struct_param_values(&mut self) -> Result<Vec<(Token, ast::Expr)>, CompileError> {
         let mut params = vec![self.parse_struct_param_value()?];
         while self.match_comma() {
-            self.advance()?;
+            self.advance();
             params.push(self.parse_struct_param_value()?);
         }
         Ok(params)
@@ -631,7 +695,7 @@ impl Parser {
         };
 
         let variant = if self.match_colon_colon() {
-            self.advance()?;
+            self.advance();
             Some(self.consume_identifier()?)
         } else {
             None
@@ -648,7 +712,7 @@ impl Parser {
         }
 
         // Consume '('
-        self.advance()?;
+        self.advance();
 
         let arguments = if self.match_rparen() {
             // Directly closed, i.e, Enum::Ident()
@@ -658,7 +722,7 @@ impl Parser {
             self.parse_arguments()?
         };
 
-        self.advance()?;
+        self.advance();
 
         Ok(ast::EnumValue {
             name,
@@ -671,7 +735,7 @@ impl Parser {
     fn parse_arguments(&mut self) -> Result<Vec<ast::Expr>, CompileError> {
         let mut arguments = vec![self.parse_expr()?];
         while self.match_comma() {
-            self.advance()?;
+            self.advance();
             arguments.push(self.parse_expr()?);
         }
         Ok(arguments)
@@ -688,7 +752,7 @@ impl Parser {
         self.consume_lbrace()?;
 
         let mut functions = Vec::new();
-        while !self.match_rbrace() {
+        while !self.match_rbrace() && !self.is_at_end() {
             functions.push(self.parse_function()?);
         }
 
@@ -709,7 +773,7 @@ impl Parser {
 
         self.consume_lbrace()?;
         let fields = if self.match_rbrace() {
-            self.advance()?;
+            self.advance();
             Vec::new()
         } else {
             self.parse_struct_list()?
@@ -744,7 +808,7 @@ impl Parser {
         self.consume_rparen()?;
 
         let return_type = if self.match_thin_arrow() {
-            self.advance()?;
+            self.advance();
             self.parse_type()?
         } else {
             ast::Type::Empty
@@ -767,7 +831,7 @@ impl Parser {
     /// without consuming anything.
     fn parse_optional_generic_params(&mut self) -> Result<Vec<ast::Type>, CompileError> {
         if self.match_langle() {
-            self.advance()?;
+            self.advance();
             let generic_list = self.parse_typelist()?;
             self.consume_rangle()?;
             Ok(generic_list)
@@ -782,8 +846,26 @@ impl Parser {
         self.consume_lbrace()?;
 
         let mut declarations = Vec::new();
-        while !self.match_rbrace() {
-            declarations.push(self.parse_declaration()?);
+        let mut return_expr: Option<ast::Expr> = None;
+        while !self.match_rbrace() && !self.is_at_end() {
+            let declaration_start = self.peek()?.get_file_pointer();
+            let parsed_decl = self.parse_declaration();
+            match parsed_decl {
+                Ok(declaration) if !declaration.is_not_recovered() => declarations.push(declaration),
+                _ => {
+                    self.recover_to_position(declaration_start)?;
+                    return_expr = Some(self.parse_expr()?);
+                    break;
+                    //     self.errors.push(e);
+                    //     dbg!(self.peek().unwrap());
+                    //     // ast::NotRecovered::not_recovered()
+                    //     // self.recover_to_position(declaration_start)?;
+                    //     self.synchronize();
+                    //     dbg!(self.peek().unwrap());
+                    //     break;
+                }
+            }
+            // declarations.push(self.parse_declaration()?);
         }
 
         self.consume_rbrace()?;
@@ -791,7 +873,7 @@ impl Parser {
         // TODO: Handle return expr.
         Ok(ast::Block {
             declarations,
-            return_expr: None,
+            return_expr: return_expr.map(Box::new)
         })
     }
 
@@ -800,7 +882,7 @@ impl Parser {
         let mut params = vec![self.parse_param()?];
 
         while self.match_comma() {
-            self.advance()?;
+            self.advance();
             params.push(self.parse_param()?);
         }
 
@@ -833,13 +915,13 @@ impl Parser {
     fn parse_error_variant_list(&mut self) -> Result<Vec<ast::ErrorVariant>, CompileError> {
         let mut variants = Vec::new();
         if self.match_rbrace() {
-            self.advance()?;
+            self.advance();
             return Ok(variants);
         } else {
             variants.push(self.parse_error_variant()?);
         }
 
-        while !self.match_rbrace() {
+        while !self.match_rbrace() && !self.is_at_end() {
             self.consume_comma()?;
             variants.push(self.parse_error_variant()?);
         }
@@ -851,7 +933,7 @@ impl Parser {
     fn parse_error_variant(&mut self) -> Result<ast::ErrorVariant, CompileError> {
         let name = self.consume_identifier()?;
         let fields = if self.match_lparen() {
-            self.advance()?;
+            self.advance();
             let result = self.parse_struct_list()?;
             self.consume_rparen()?;
             result
@@ -889,13 +971,13 @@ impl Parser {
     fn parse_enum_variant_list(&mut self) -> Result<Vec<ast::EnumVariant>, CompileError> {
         let mut variants = Vec::new();
         if self.match_rbrace() {
-            self.advance()?;
+            self.advance();
             return Ok(variants);
         } else {
             variants.push(self.parse_enum_variant()?);
         }
 
-        while !self.match_rbrace() {
+        while !self.match_rbrace() && !self.is_at_end() {
             self.consume_comma()?;
             variants.push(self.parse_enum_variant()?);
         }
@@ -908,14 +990,14 @@ impl Parser {
     fn parse_enum_variant(&mut self) -> Result<ast::EnumVariant, CompileError> {
         let identifier = self.consume_identifier()?;
         if self.match_lparen() {
-            self.advance()?;
+            self.advance();
             // Then expect an enum typelist
             let typelist = self.parse_typelist()?;
             self.consume_rparen()?;
 
             Ok(ast::EnumVariant::Tuple(identifier, typelist))
         } else if self.match_lbrace() {
-            self.advance()?;
+            self.advance();
             let struct_list = self.parse_struct_list()?;
             self.consume_rbrace()?;
 
@@ -930,7 +1012,7 @@ impl Parser {
         let mut types = vec![self.parse_type()?];
 
         while self.match_comma() {
-            self.advance()?;
+            self.advance();
             types.push(self.parse_type()?);
         }
 
@@ -946,7 +1028,7 @@ impl Parser {
         // be used to parse errors, which contain structFields wrapped
         // around parens such as SomeError(x: type).
         while self.match_comma() {
-            self.advance()?;
+            self.advance();
             struct_list.push(self.parse_struct_field()?);
         }
 
@@ -969,9 +1051,9 @@ impl Parser {
     //                | "(" type? ")"
     fn parse_type(&mut self) -> Result<ast::Type, CompileError> {
         if self.match_lparen() {
-            self.advance()?;
+            self.advance();
             if self.match_rparen() {
-                self.advance()?;
+                self.advance();
                 // If (), return empty type
                 Ok(ast::Type::Empty)
             } else {
@@ -985,52 +1067,25 @@ impl Parser {
             let identifier = self.consume_identifier()?;
             if self.match_langle() {
                 // IDENTIFIER genericsArgs
-                self.advance()?;
+                self.advance();
                 let generic_list = self.parse_typelist()?;
                 self.consume_rangle()?;
                 Ok(ast::Type::Generic(identifier, generic_list))
-
-                // Ok(type_)
-                // if self.match_pipe() {
-                //     self.advance()?;
-                //     let right_type = self.parse_type()?;
-                //     Ok(Type::Union(Box::new(type_), Box::new(right_type)))
-                // } else {
-                //     Ok(type_)
-                // }
             } else {
                 Ok(ast::Type::Simple(identifier))
-                // Simply IDENTIFIER
-                // let type_ = Type::Simple(identifier);
-                //
-                // // Check for union type
-                // if self.match_pipe() {
-                //     let right_type = self.parse_type()?;
-                //     Ok(Type::Union(Box::new(type_), Box::new(right_type)))
-                // } else {
-                //     Ok(type_)
-                // }
             }
         }
     }
 
-    // fn check(&mut self, expected: Token) -> bool {
-    //     if self.is_at_end() {
-    //         false
-    //     } else {
-    //         std::mem::discriminant(self.peek().unwrap()) == std::mem::discriminant(&expected)
-    //     }
-    // }
-    
     /// Shorthand to report errors.
     fn report(&mut self, error: &CompileError) {
         self.lexer.report_error(error);
     }
 
     /// Advances the parser, consuming and returning the next token.
-    fn advance(&mut self) -> Result<Token, CompileError> {
+    fn advance(&mut self) -> Token {
         if let Some(token) = self.token_queue.pop_front() {
-            Ok(token)
+            token
         } else {
             // let next_token_opt = self.lexer.request_next_token();
             self.lexer.request_next_token()
@@ -1040,28 +1095,27 @@ impl Parser {
     /// Peeks the next token without consuming it.
     fn peek(&mut self) -> Result<&Token, CompileError> {
         if self.token_queue.is_empty() {
-            let token = self.lexer.request_next_token()?;
+            let token = self.lexer.request_next_token();
             self.token_queue.push_back(token);
         }
         Ok(self.token_queue.front().unwrap())
     }
-    
+
     /// Recovers to the given token.
     fn recover_to_token(&mut self, token: &Token) -> Result<(), CompileError> {
         self.token_queue.clear();
         self.lexer.revert_to_position(token.get_file_pointer())
     }
-    
+
     /// Recovers to the given position.
     fn recover_to_position(&mut self, position: FilePointer) -> Result<(), CompileError> {
         self.token_queue.clear();
         self.lexer.revert_to_position(position)
     }
-    
 
     /// Delegates is_at_end function to the lexer.
-    fn is_at_end(&self) -> bool {
-        self.token_queue.is_empty() && self.lexer.is_at_end()
+    fn is_at_end(&mut self) -> bool {
+        (self.token_queue.is_empty() && self.lexer.is_at_end()) || self.match_eof()
     }
 
     /// Clears the token queue.
@@ -1096,7 +1150,6 @@ generate_consume_impl! {
     consume_do => Token::Do(..) , "do",
     consume_fat_arrow => Token::FatArrow(..), "=>"
 }
-
 
 generate_match_impl! {
     // match_identifier => Token::Identifier(..),

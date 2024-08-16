@@ -4,7 +4,7 @@
 //! The reporter operates by taking in an error, as defined in the `errors` module.
 
 use crate::context::FilePointer;
-use crate::errors::{CompileError, Help, SyntaxError};
+use crate::errors::{CompileError, Help, SyntaxError, TypeError};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -47,6 +47,7 @@ impl Reporter {
         match error {
             CompileError::Syntax(ref syntax_error) => self.report_syntax_error(syntax_error),
             CompileError::IO(ref io_error) => Self::report_io_error::<&str>(io_error, None),
+            CompileError::TypeError(ref type_error) => self.report_type_error(type_error),
         }
     }
 
@@ -58,6 +59,12 @@ impl Reporter {
             error.file_position(),
             error.help_message(),
         )
+    }
+    
+    /// Reports a Type Error to stderr.
+    /// Forwards the message to `print_error`.
+    fn report_type_error(&self, error: &TypeError) {
+        self.print_error(error.to_string(), error.file_position(), None)
     }
 
     /// Reports an IO Error to stderr.

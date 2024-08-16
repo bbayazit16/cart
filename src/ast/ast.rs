@@ -13,7 +13,7 @@ pub enum Expr {
     Binary(Box<BinaryExpr>),
     Unary(Box<UnaryExpr>),
     Literal(Literal),
-    Variable(Token),
+    Variable(Token, Option<Type>),
     Assignment(Box<AssignmentExpr>),
     Call(Box<CallExpr>),
     StructAccess(Box<StructAccessExpr>),
@@ -21,6 +21,7 @@ pub enum Expr {
     MatchExpr(Box<MatchExpr>),
     StructLiteral(Box<StructLiteral>),
     EnumValue(Box<EnumValue>),
+    NotRecovered,
 }
 
 #[derive(Debug, Clone)]
@@ -30,7 +31,8 @@ pub enum Declaration {
     EnumDecl(Box<EnumDecl>),
     ErrorDecl(Box<ErrorDecl>),
     ExtensionDecl(Box<ExtensionDecl>),
-    StatementDecl(Box<Stmt>)
+    StatementDecl(Box<Stmt>),
+    NotRecovered,
 }
 
 #[derive(Debug, Clone)]
@@ -241,11 +243,9 @@ pub struct ExtensionDecl {
 pub enum Type {
     Simple(Token),
     Empty,
-    // Option<T> == Generic(Option, [T])
     Generic(Token, Vec<Type>),
-    // <T, E> == GenericDecl([T, E])
     GenericDecl(Vec<Type>),
-    // Union(Box<Type>, Box<Type>),
+    NotRecovered,
 }
 
 #[derive(Debug, Clone)]

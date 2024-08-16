@@ -38,9 +38,31 @@ pub enum SyntaxError {
 }
 
 #[derive(Error, Debug)]
+pub enum TypeError {
+    #[error("incorrect type '{incorrect}', expected '{expected}' at {file_pointer}")]
+    IncorrectType {
+        file_pointer: FilePointer,
+        incorrect: String,
+        expected: String,
+    }
+}
+
+#[derive(Error, Debug)]
+pub enum ResolutionError {
+    #[error("undefined variable '{variable}' at {file_pointer}")]
+    UndefinedVariable {
+        file_pointer: FilePointer,
+        variable: String,
+    }
+}
+
+#[derive(Error, Debug)]
 pub enum CompileError {
     #[error(transparent)]
     Syntax(#[from] SyntaxError),
+    
+    #[error(transparent)]
+    TypeError(#[from] TypeError),
 
     #[error(transparent)]
     IO(#[from] std::io::Error),

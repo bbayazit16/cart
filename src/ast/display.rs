@@ -6,9 +6,9 @@
 //!
 //! For now, the display method was implemented directly.
 //!
-use std::fmt;
-use crate::token::Token;
 use super::ast::*;
+use crate::token::Token;
+use std::fmt;
 
 fn display_vec<T: fmt::Display + 'static>(v: &[T], f: &mut fmt::Formatter<'_>) -> fmt::Result {
     write!(f, "[")?;
@@ -20,11 +20,11 @@ fn display_vec<T: fmt::Display + 'static>(v: &[T], f: &mut fmt::Formatter<'_>) -
             item if std::any::TypeId::of::<T>() == std::any::TypeId::of::<(Token, Expr)>() => {
                 let pair = unsafe { &*(item as *const T as *const TokenExprPair) };
                 write!(f, "{}", pair)?;
-            },
+            }
             item if std::any::TypeId::of::<T>() == std::any::TypeId::of::<(Expr, Block)>() => {
                 let pair = unsafe { &*(item as *const T as *const ExprBlockPair) };
                 write!(f, "{}", pair)?;
-            },
+            }
             _ => write!(f, "{}", item)?,
         }
     }
@@ -60,7 +60,7 @@ impl fmt::Display for Expr {
             Expr::Binary(binary) => write!(f, "Binary({})", binary),
             Expr::Unary(unary) => write!(f, "Unary({})", unary),
             Expr::Literal(literal) => write!(f, "Literal({})", literal),
-            Expr::Variable(token) => write!(f, "Variable({})", token),
+            Expr::Variable(token, ty) => write!(f, "Variable({}, type={:?})", token, ty),
             Expr::Assignment(assign) => write!(f, "Assignment({})", assign),
             Expr::Call(call) => write!(f, "Call({})", call),
             Expr::StructAccess(access) => write!(f, "StructAccess({})", access),
@@ -68,6 +68,7 @@ impl fmt::Display for Expr {
             Expr::MatchExpr(match_expr) => write!(f, "MatchExpr({})", match_expr),
             Expr::StructLiteral(struct_literal) => write!(f, "StructLiteral({})", struct_literal),
             Expr::EnumValue(enum_value) => write!(f, "EnumValue({})", enum_value),
+            Expr::NotRecovered => write!(f, "Expr(NotRecovered())"),
         }
     }
 }
@@ -81,6 +82,7 @@ impl fmt::Display for Declaration {
             Declaration::ErrorDecl(error_decl) => write!(f, "ErrorDecl({})", error_decl),
             Declaration::ExtensionDecl(ext_decl) => write!(f, "ExtensionDecl({})", ext_decl),
             Declaration::StatementDecl(stmt) => write!(f, "StatementDecl({})", stmt),
+            Declaration::NotRecovered => write!(f, "Declaration(NotRecovered())"),
         }
     }
 }
@@ -97,13 +99,21 @@ impl fmt::Display for Block {
 
 impl fmt::Display for BinaryExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "BinaryExpr(left={}, operator={}, right={})", self.left, self.operator, self.right)
+        write!(
+            f,
+            "BinaryExpr(left={}, operator={}, right={})",
+            self.left, self.operator, self.right
+        )
     }
 }
 
 impl fmt::Display for UnaryExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "UnaryExpr(operator={}, right={})", self.operator, self.right)
+        write!(
+            f,
+            "UnaryExpr(operator={}, right={})",
+            self.operator, self.right
+        )
     }
 }
 
@@ -120,7 +130,11 @@ impl fmt::Display for Literal {
 
 impl fmt::Display for AssignmentExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "AssignmentExpr(l_value={}, r_value={})", self.l_value, self.r_value)
+        write!(
+            f,
+            "AssignmentExpr(l_value={}, r_value={})",
+            self.l_value, self.r_value
+        )
     }
 }
 
@@ -142,8 +156,14 @@ impl fmt::Display for StructAccessExpr {
 
 impl fmt::Display for IfExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "IfExpr(condition={}, then_branch={}, elif_branches=", self.condition, self.then_branch)?;
-        let elif_branches: Vec<ExprBlockPair> = self.elif_branches.iter()
+        write!(
+            f,
+            "IfExpr(condition={}, then_branch={}, elif_branches=",
+            self.condition, self.then_branch
+        )?;
+        let elif_branches: Vec<ExprBlockPair> = self
+            .elif_branches
+            .iter()
             .map(|(expr, block)| ExprBlockPair(expr.clone(), block.clone()))
             .collect();
         display_vec(&elif_branches, f)?;
@@ -184,7 +204,9 @@ impl fmt::Display for Pattern {
 impl fmt::Display for StructLiteral {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "StructLiteral(name={}, fields=", self.name)?;
-        let fields: Vec<TokenExprPair> = self.fields.iter()
+        let fields: Vec<TokenExprPair> = self
+            .fields
+            .iter()
             .map(|(token, expr)| TokenExprPair(token.clone(), expr.clone()))
             .collect();
         display_vec(&fields, f)?;
@@ -205,7 +227,9 @@ impl fmt::Display for EnumValue {
 impl fmt::Display for ErrorValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ErrorValue(name={}, fields=", self.name)?;
-        let fields: Vec<TokenExprPair> = self.fields.iter()
+        let fields: Vec<TokenExprPair> = self
+            .fields
+            .iter()
             .map(|(token, expr)| TokenExprPair(token.clone(), expr.clone()))
             .collect();
         display_vec(&fields, f)?;
@@ -221,12 +245,12 @@ impl fmt::Display for Stmt {
                 write!(f, "Use(")?;
                 display_vec(tokens, f)?;
                 write!(f, ")")
-            },
+            }
             Stmt::Return(expr) => {
                 write!(f, "Return(")?;
                 display_option(expr, f)?;
                 write!(f, ")")
-            },
+            }
             Stmt::Let(let_stmt) => write!(f, "Let({})", let_stmt),
             Stmt::Assign(assign) => write!(f, "Assign({})", assign),
             Stmt::For(for_stmt) => write!(f, "For({})", for_stmt),
@@ -238,7 +262,11 @@ impl fmt::Display for Stmt {
 
 impl fmt::Display for LetStmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "LetStmt(name={}, is_mut={}, set_type=", self.name, self.is_mut)?;
+        write!(
+            f,
+            "LetStmt(name={}, is_mut={}, set_type=",
+            self.name, self.is_mut
+        )?;
         display_option(&self.set_type, f)?;
         write!(f, ", expr={})", self.expr)
     }
@@ -260,13 +288,21 @@ impl fmt::Display for ForStmt {
 
 impl fmt::Display for WhileStmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "WhileStmt(condition={}, body={})", self.condition, self.body)
+        write!(
+            f,
+            "WhileStmt(condition={}, body={})",
+            self.condition, self.body
+        )
     }
 }
 
 impl fmt::Display for DoWhileStmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "DoWhileStmt(body={}, condition={})", self.body, self.condition)
+        write!(
+            f,
+            "DoWhileStmt(body={}, condition={})",
+            self.body, self.condition
+        )
     }
 }
 
@@ -274,7 +310,11 @@ impl fmt::Display for FunctionDecl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "FunctionDecl(name={}, params=", self.name)?;
         display_vec(&self.params, f)?;
-        write!(f, ", return_type={}, body={}, generic_params=", self.return_type, self.body)?;
+        write!(
+            f,
+            ", return_type={}, body={}, generic_params=",
+            self.return_type, self.body
+        )?;
         display_vec(&self.generic_params, f)?;
         write!(f, ")")
     }
@@ -282,7 +322,11 @@ impl fmt::Display for FunctionDecl {
 
 impl fmt::Display for Parameter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Parameter(name={}, param_type={})", self.name, self.param_type)
+        write!(
+            f,
+            "Parameter(name={}, param_type={})",
+            self.name, self.param_type
+        )
     }
 }
 
@@ -298,7 +342,11 @@ impl fmt::Display for StructDecl {
 
 impl fmt::Display for StructField {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "StructField(name={}, field_type={})", self.name, self.field_type)
+        write!(
+            f,
+            "StructField(name={}, field_type={})",
+            self.name, self.field_type
+        )
     }
 }
 
@@ -318,12 +366,12 @@ impl fmt::Display for EnumVariant {
                 write!(f, "Tuple({}, ", token)?;
                 display_vec(types, f)?;
                 write!(f, ")")
-            },
+            }
             EnumVariant::Struct(token, fields) => {
                 write!(f, "Struct({}, ", token)?;
                 display_vec(fields, f)?;
                 write!(f, ")")
-            },
+            }
         }
     }
 }
@@ -363,12 +411,13 @@ impl fmt::Display for Type {
                 write!(f, "Generic({}, ", token)?;
                 display_vec(types, f)?;
                 write!(f, ")")
-            },
+            }
             Type::GenericDecl(types) => {
                 write!(f, "GenericDecl(")?;
                 display_vec(types, f)?;
                 write!(f, ")")
-            },
+            }
+            Type::NotRecovered => write!(f, "Type(NotRecovered())"),
         }
     }
 }
