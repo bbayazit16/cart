@@ -1,8 +1,3 @@
-//! This module provides defines `FilePointer` - which provides abstraction
-//! for the token positions.
-//! `FilePointer` struct represents a specific position in source code.
-//! It provides abstraction for the Lexer and Tokens - allowing reverts to the given `FilePointer`.
-
 use std::fmt::Formatter;
 
 /// The `FilePointer` struct represents a specific position in a text file,
@@ -20,7 +15,7 @@ use std::fmt::Formatter;
 /// - `file_position`: The position (byte offset) within the entire file (0-indexed).
 /// - `line_position`: The position within the line (1-indexed).
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct FilePointer {
+pub(crate) struct FilePointer {
     pub line: usize,
     pub file_position: usize,
     pub line_position: usize,

@@ -1,144 +1,15 @@
-//! ast_codegen module is responsible for generating LLVM IR from the AST.
-//!
-//! The CodeGen struct is the main struct that is used to generate the LLVM IR.
-//!
-use crate::ast::{
-    Block, CallExpr, Declaration, Expr, FunctionDecl, IfExpr, LetStmt, Literal, Program, Stmt,
-};
-
-use crate::codegen::symbol_table::{SymbolTable, Variable};
-use crate::codegen::types::create_function_type;
+use crate::ast::{Block, CallExpr, Expr, IfExpr, Literal};
+use crate::codegen::symbol_table::Variable;
+use crate::codegen::CodeGen;
 use crate::token::Token;
-use inkwell::builder::Builder;
-use inkwell::context::Context;
-use inkwell::module::Module;
+use crate::token_value;
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, IntValue};
 use inkwell::IntPredicate;
 
-macro_rules! token_value {
-    ($ident:expr) => {
-        match $ident {
-            crate::token::Token::Identifier(_, s) => s.to_string(),
-            crate::token::Token::Number(_, s, _) => s.to_string(),
-            _ => panic!("Must be an identifier"),
-        }
-    };
-}
-
-/// Codegen struct is responsible for generating LLVM IR from the AST.
-/// The struct contains the context, module, builder, and the symbol table.
-/// The symbol table is used to keep track of the variables in the current scope.
-/// The CodeGen struct is created with a context, and the generate method is called
-/// with the program AST to generate the LLVM IR.
-pub struct CodeGen<'ctx> {
-    context: &'ctx Context,
-    module: Module<'ctx>,
-    builder: Builder<'ctx>,
-    symbol_table: SymbolTable<'ctx>,
-}
-
 impl<'ctx> CodeGen<'ctx> {
-    /// Create a new CodeGen struct given context,
-    /// optionally specifying the module name. If the module name
-    /// isn't specified, the default name is "main".
-    pub fn new<S: AsRef<str>>(context: &'ctx Context, module_name: Option<S>) -> Self {
-        let module_name_str = module_name
-            .as_ref()
-            .map_or("main", |s| s.as_ref())
-            .to_string();
-        let module = context.create_module(&module_name_str);
-        let builder = context.create_builder();
-        CodeGen {
-            context,
-            module,
-            builder,
-            symbol_table: SymbolTable::default(),
-        }
-    }
-
-    /// Generate the LLVM IR from the program AST.
-    /// Returns a reference to the module.
-    pub fn generate(&mut self, program: &Program) -> &Module<'ctx> {
-        for declaration in program.declarations.iter() {
-            self.generate_declaration(declaration);
-        }
-        &self.module
-    }
-
-    /// Generates the LLVM IR for a declaration.
-    fn generate_declaration(&mut self, declaration: &Declaration) {
-        match declaration {
-            Declaration::FunctionDecl(ref func_decl) => self.generate_function(func_decl),
-            Declaration::StatementDecl(ref stmt) => self.generate_statement(stmt),
-            _ => todo!(),
-        };
-    }
-
-    /// Generates the LLVM IR for a function declaration.
-    fn generate_function(&mut self, function_decl: &FunctionDecl) {
-        let function_type = create_function_type(
-            self.context,
-            function_decl.return_type.to_llvm_type(self.context),
-            function_decl
-                .params
-                .iter()
-                .map(|p| p.param_type.to_llvm_type(self.context))
-                .collect(),
-        );
-
-        let function = self.module.add_function(
-            &token_value!(&function_decl.name),
-            function_type,
-            None, // Linkage::External
-        );
-
-        let mut variables_to_add = Vec::new();
-        for (i, param) in function.get_param_iter().enumerate() {
-            let name = token_value!(&function_decl.params[i].name);
-            param.set_name(&name);
-            variables_to_add.push((name, Variable::Immutable(param)));
-        }
-
-        let basic_block = self.context.append_basic_block(function, "entry");
-        self.builder.position_at_end(basic_block);
-
-        let basic_value_enum = self.generate_block(&function_decl.body, variables_to_add);
-        // dbg!(&basic_value_enum);
-        let basic_value = basic_value_enum.as_ref().map(|val| val as &dyn BasicValue);
-        dbg!(&basic_block.get_terminator());
-        self.builder.build_return(basic_value).unwrap();
-
-        // // If there's a return value that's already generated, return that value.
-        // if basic_block.get_terminator().is_none() {
-        //     // No need to handle no return values here: since basic_value is still an Option
-        //     // at this point, and build_return expects an Option<BasicValue>, we can just pass
-        //     // basic_value directly.
-        //     // Even if there's no return statement inside the block, and there's no last
-        //     // value, this branch will run self.builder.build_return(None).
-        //     self.builder.build_return(basic_value).unwrap();
-        // }
-    }
-
-    /// Generates the LLVM IR for a statement.
-    fn generate_statement(&mut self, stmt: &Stmt) {
-        match stmt {
-            Stmt::Expression(expr) => {
-                self.generate_expression(expr);
-            }
-            Stmt::Return(_) => unreachable!("Return statement"),
-            // Stmt::Return(ref expr) => {
-            //     self.generate_return(expr);
-            // }
-            Stmt::Let(ref let_stmt) => {
-                self.generate_let_stmt(let_stmt);
-            }
-            _ => todo!(),
-        }
-    }
-
     /// Generates the LLVM IR for an expression.
-    fn generate_expression(&mut self, expr: &Expr) -> Option<BasicValueEnum<'ctx>> {
+    pub(super) fn generate_expression(&mut self, expr: &Expr) -> Option<BasicValueEnum<'ctx>> {
         // dbg!(&expr);
         match expr {
             Expr::Block(ref block) => self.generate_block(block, Vec::new()),
@@ -146,7 +17,7 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::Binary(ref binary_expr) => Some(self.generate_binary(binary_expr)),
             Expr::Variable(ref token, ..) => Some(self.generate_variable(token)),
             Expr::Call(ref call_expr) => self.generate_call_expr(call_expr),
-            Expr::IfExpr(ref if_expr) => self.generate_if_expr(if_expr),
+            Expr::If(ref if_expr) => self.generate_if_expr(if_expr),
             _ => todo!(),
         }
     }
@@ -154,7 +25,7 @@ impl<'ctx> CodeGen<'ctx> {
     /// Generates the LLVM IR for a block.
     /// Optionally, pass a tuple of values that will be added as variables
     /// to the symbol table after starting the scope.
-    fn generate_block(
+    pub(super) fn generate_block(
         &mut self,
         block: &Block,
         variables: Vec<(String, Variable<'ctx>)>,
@@ -365,34 +236,5 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         Some(phi_node.as_basic_value())
-    }
-
-    /// Generates LLVM IR for return expressions.
-    // fn generate_return(&mut self, expr_opt: &Option<Expr>) {
-    //     let return_value = expr_opt.as_ref().map(|expr| {
-    //         let val = self.generate_expression(expr).unwrap();
-    //         Box::new(val) as Box<dyn BasicValue>
-    //     });
-    //
-    //     self.builder.build_return(return_value.as_deref()).unwrap();
-    // }
-
-    /// Generates LLVM IR for let statements.
-    fn generate_let_stmt(&mut self, let_stmt: &LetStmt) {
-        let value = self.generate_expression(&let_stmt.expr).unwrap();
-        let name = token_value!(&let_stmt.name);
-        if let_stmt.is_mut {
-            let alloca = self
-                .builder
-                .build_alloca(value.get_type(), &name)
-                .expect("Failed to allocate variable");
-            // entry block alloca?
-            self.builder.build_store(alloca, value).unwrap();
-            self.symbol_table
-                .add_variable(name, Variable::Mutable(alloca));
-        } else {
-            self.symbol_table
-                .add_variable(name, Variable::Immutable(value));
-        }
     }
 }

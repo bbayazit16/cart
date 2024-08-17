@@ -1,7 +1,4 @@
-//! This module contains the symbol table and its implementation, as well
-//! as the definition of a Variable for the codegen.
-//! The symbol table is used to store variables and their values.
-use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue, PointerValue};
+use inkwell::values::{BasicValueEnum, PointerValue};
 use std::collections::HashMap;
 
 /// Represents a variable in the codegen.

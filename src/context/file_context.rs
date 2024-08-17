@@ -1,6 +1,3 @@
-//! Context module defines `Context` - a struct passed across the
-//! lexer, parser, and many other structs needed to parse source
-//! code.
 use crate::reporter::Reporter;
 use std::fs::File;
 use std::io::BufReader;
@@ -15,9 +12,10 @@ use std::path::{Path, PathBuf};
 /// - `reporter`: The reporter used to report errors in this file.
 /// - `file_path`: The original path to the file.
 #[derive(Debug)]
-pub struct FileContext {
+pub(crate) struct FileContext {
     reader: BufReader<File>,
     reporter: Reporter,
+    #[allow(unused)]
     file_path: PathBuf,
 }
 
@@ -25,30 +23,28 @@ impl FileContext {
     /// Initialize a new `FileContext`.
     /// If the file can't be opened, report via the reporter,
     /// and return None.
-    pub fn try_new<P: AsRef<Path>>(file_path: &P) -> Option<Self> {
-        match Self::safe_open(&file_path) {
-            Some(file) => Some(FileContext {
-                reader: BufReader::new(file),
-                reporter: Reporter::new(file_path),
-                file_path: file_path.as_ref().to_path_buf(),
-            }),
-            None => None,
-        }
+    pub(crate) fn try_new<P: AsRef<Path>>(file_path: &P) -> Option<Self> {
+        Self::safe_open(&file_path).map(|file| FileContext {
+            reader: BufReader::new(file),
+            reporter: Reporter::new(file_path),
+            file_path: file_path.as_ref().to_path_buf(),
+        })
     }
 
     /// Returns a reference to the reader.
     /// Allows the file to be read from the context.
-    pub fn reader(&mut self) -> &mut BufReader<File> {
+    pub(crate) fn reader(&mut self) -> &mut BufReader<File> {
         &mut self.reader
     }
 
     /// Returns a reference to the file path.
-    pub fn file_path(&self) -> &PathBuf {
+    #[allow(unused)]
+    pub(crate) fn file_path(&self) -> &PathBuf {
         &self.file_path
     }
-    
+
     /// Returns a reference to the reporter.
-    pub fn reporter(&self) -> &Reporter {
+    pub(crate) fn reporter(&self) -> &Reporter {
         &self.reporter
     }
 

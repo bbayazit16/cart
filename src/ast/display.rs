@@ -1,12 +1,4 @@
-//! Implements the Display trait for all AST nodes.
-//! While writing a macro for this is possible, it can quickly get hard
-//! due to the issue #35853 in the Rust compiler:
-//!
-//! nested macros don't allow repetitions in binding patterns #35853.
-//!
-//! For now, the display method was implemented directly.
-//!
-use super::ast::*;
+use crate::ast::*;
 use crate::token::Token;
 use std::fmt;
 
@@ -64,8 +56,8 @@ impl fmt::Display for Expr {
             Expr::Assignment(assign) => write!(f, "Assignment({})", assign),
             Expr::Call(call) => write!(f, "Call({})", call),
             Expr::StructAccess(access) => write!(f, "StructAccess({})", access),
-            Expr::IfExpr(if_expr) => write!(f, "IfExpr({})", if_expr),
-            Expr::MatchExpr(match_expr) => write!(f, "MatchExpr({})", match_expr),
+            Expr::If(if_expr) => write!(f, "IfExpr({})", if_expr),
+            Expr::Match(match_expr) => write!(f, "MatchExpr({})", match_expr),
             Expr::StructLiteral(struct_literal) => write!(f, "StructLiteral({})", struct_literal),
             Expr::EnumValue(enum_value) => write!(f, "EnumValue({})", enum_value),
             Expr::NotRecovered => write!(f, "Expr(NotRecovered())"),
@@ -252,7 +244,6 @@ impl fmt::Display for Stmt {
                 write!(f, ")")
             }
             Stmt::Let(let_stmt) => write!(f, "Let({})", let_stmt),
-            Stmt::Assign(assign) => write!(f, "Assign({})", assign),
             Stmt::For(for_stmt) => write!(f, "For({})", for_stmt),
             Stmt::While(while_stmt) => write!(f, "While({})", while_stmt),
             Stmt::DoWhile(do_while_stmt) => write!(f, "DoWhile({})", do_while_stmt),

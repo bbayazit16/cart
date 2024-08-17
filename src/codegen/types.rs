@@ -1,6 +1,3 @@
-//! Types module converts the Type AST
-//! into LLVM types.
-//!
 use crate::ast::Type;
 use crate::token::Token;
 use inkwell::context::Context;

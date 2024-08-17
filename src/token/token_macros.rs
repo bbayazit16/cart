@@ -1,13 +1,8 @@
-//! This module defines the `Token` enum and associated methods,
-//! used across the compiler.
-//! 
-//! Tokens are first generated in the lexer, via reading a source file.
-
 /// A macro to define the `Token` enum with variants and associated methods.
 ///
 /// This macro generates an enum `Token` with the specified variants. By default,
 /// each token contains [`FilePointer`] in their first field.
-/// 
+///
 /// To implement the display method for `Token`, see [`impl_token_display`]. To both define
 /// and implement display at the same time, see the macro [`define_tokens_with_display`].
 ///
@@ -26,7 +21,7 @@ macro_rules! define_tokens {
     ( $( $name:ident $( ( $( $tt:ty ),* ) )? ),* $(,)? ) => {
         #[derive(Debug, Clone)]
         #[allow(dead_code)]
-        pub enum Token {
+        pub(crate) enum Token {
             $(
                 $name($crate::context::FilePointer $( $(, $tt)* )?),
             )*
@@ -34,27 +29,12 @@ macro_rules! define_tokens {
 
         impl Token {
             /// Returns the file pointer of the token.
-            pub fn get_file_pointer(&self) -> $crate::context::FilePointer {
+            pub(crate) fn get_file_pointer(&self) -> $crate::context::FilePointer {
                 match self {
                     $(
                         Token::$name(pos, ..) => *pos,
                     )*
                 }
-            }
-
-            /// Returns the line number of the token.
-            pub fn get_line(&self) -> usize {
-                self.get_file_pointer().line
-            }
-
-            /// Returns the file position of the token.
-            pub fn get_file_position(&self) -> usize {
-                self.get_file_pointer().file_position
-            }
-
-            /// Returns the line position of the token.
-            pub fn get_line_position(&self) -> usize {
-                self.get_file_pointer().line_position
             }
         }
     }
@@ -103,7 +83,7 @@ macro_rules! impl_token_display {
 /// This macro both defines, via [`define_tokens`] and implement display,
 /// via [`impl_token_display`] at the same time. To do these actions separately,
 /// use these macros individually.
-/// 
+///
 /// # Examples
 /// ```rust
 /// define_tokens_with_display! {
@@ -128,4 +108,16 @@ macro_rules! define_tokens_with_display {
             )*
         }
     }
+}
+
+/// Returns the value of a token, if the value exists.
+#[macro_export]
+macro_rules! token_value {
+    ($ident:expr) => {
+        match $ident {
+            $crate::token::Token::Identifier(_, s) => s.to_string(),
+            $crate::token::Token::Number(_, s, _) => s.to_string(),
+            _ => panic!("Must be an identifier"),
+        }
+    };
 }

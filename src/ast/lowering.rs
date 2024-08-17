@@ -1,14 +1,7 @@
-//! This module expands the AST to prepare it for code generation.
-//! The expansion includes things like desugaring, moving elif
-//! statements inside one else block, removing return statements
-//! and inserting implicit block returns, and creating an else
-//! branch for every if expression. This part handles things
-//! like early returns from functions.
-
 use crate::ast::{Block, Declaration, Expr, Program, Stmt};
 
 /// Lower the AST to prepare it for code generation.
-pub fn lower(program: &mut Program) {
+pub(crate) fn lower(program: &mut Program) {
     for decl in &mut program.declarations {
         // TODO: Extensions, statements, etc. have blocks.
         if let Declaration::FunctionDecl(ref mut func_decl) = *decl {
@@ -72,7 +65,7 @@ impl Block {
             let mut should_drain = false;
             if let Declaration::StatementDecl(ref mut stmt) = left[i] {
                 if let Stmt::Expression(ref mut expr) = **stmt {
-                    if let Expr::IfExpr(ref mut if_expr) = **expr {
+                    if let Expr::If(ref mut if_expr) = **expr {
                         // Pass the rest of the declarations to the lower_if_expr function
                         if right.is_empty() {
                             return;
@@ -107,16 +100,16 @@ impl Block {
             }
             i += 1;
         }
-        
+
         // Here, there's one subtle thing to note. Until now, we have only
         // iterated over the declarations in the block. Now, we must set the
         // block's return value to the if expression.
-        
+
         // The popped value is the if expression that was just lowered.
         let if_expr = self.declarations.last();
         if let Some(Declaration::StatementDecl(ref stmt)) = if_expr {
             if let Stmt::Expression(expr) = &**stmt {
-                if let Expr::IfExpr(_) = &**expr {
+                if let Expr::If(_) = &**expr {
                     let last = self.declarations.pop().unwrap(); // removes the if expression
                     if let Declaration::StatementDecl(stmt) = last {
                         if let Stmt::Expression(if_expr) = *stmt {

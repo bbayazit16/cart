@@ -1,10 +1,8 @@
-//! The help module implements help messages for certain
-//! error types. If the `help` trait is implemented, the
-//! reporter will accordingly print help messages.
-
 use crate::errors::SyntaxError;
 
-pub trait Help {
+/// The `help` trait is implemented for certain error types. If the `help` trait
+/// is implemented, then the reporter will accordingly print the help messages.
+pub(crate) trait Help {
     fn help_message(&self) -> Option<String>;
 }
 

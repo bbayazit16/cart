@@ -1,12 +1,9 @@
-//! This module implements the `NotRecovered` trait for
-//! each of the AST nodes. The returned value is used as a placeholder
-//! when the AST can't be recovered.
-
 use crate::ast::*;
 use crate::context::FilePointer;
 use crate::token::Token;
 
-pub trait NotRecovered {
+pub(crate) trait NotRecovered {
+    #[allow(unused)]
     fn not_recovered() -> Self;
     fn is_not_recovered(&self) -> bool;
 }
@@ -24,6 +21,7 @@ impl NotRecovered for Declaration {
     fn not_recovered() -> Self {
         Declaration::NotRecovered
     }
+
     fn is_not_recovered(&self) -> bool {
         matches!(self, Declaration::NotRecovered)
     }
@@ -36,6 +34,7 @@ impl NotRecovered for Block {
             return_expr: None,
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.declarations.iter().any(|decl| decl.is_not_recovered())
             || self
@@ -65,6 +64,7 @@ impl NotRecovered for UnaryExpr {
             right: Expr::not_recovered(),
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.right.is_not_recovered()
     }
@@ -74,6 +74,7 @@ impl NotRecovered for Literal {
     fn not_recovered() -> Self {
         Literal::None
     }
+
     fn is_not_recovered(&self) -> bool {
         matches!(self, Literal::None)
     }
@@ -86,6 +87,7 @@ impl NotRecovered for AssignmentExpr {
             r_value: Box::new(Expr::not_recovered()),
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.l_value.is_not_recovered() || self.r_value.is_not_recovered()
     }
@@ -98,6 +100,7 @@ impl NotRecovered for CallExpr {
             arguments: vec![Expr::not_recovered()],
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.callee.is_not_recovered() || self.arguments.iter().any(|arg| arg.is_not_recovered())
     }
@@ -110,6 +113,7 @@ impl NotRecovered for StructAccessExpr {
             fields: vec![Token::not_recovered()],
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.object.is_not_recovered()
     }
@@ -124,6 +128,7 @@ impl NotRecovered for IfExpr {
             else_branch: None,
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.condition.is_not_recovered()
             || self.then_branch.is_not_recovered()
@@ -145,6 +150,7 @@ impl NotRecovered for MatchExpr {
             arms: vec![MatchArm::not_recovered()],
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.value.is_not_recovered() || self.arms.iter().any(|arm| arm.is_not_recovered())
     }
@@ -157,6 +163,7 @@ impl NotRecovered for MatchArm {
             body: Box::new(Expr::not_recovered()),
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.pattern.is_not_recovered() || self.body.is_not_recovered()
     }
@@ -166,6 +173,7 @@ impl NotRecovered for Pattern {
     fn not_recovered() -> Self {
         Pattern::Wildcard
     }
+
     fn is_not_recovered(&self) -> bool {
         matches!(self, Pattern::Wildcard)
     }
@@ -178,6 +186,7 @@ impl NotRecovered for StructLiteral {
             fields: vec![(Token::not_recovered(), Expr::not_recovered())],
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.fields.iter().any(|(_, expr)| expr.is_not_recovered())
     }
@@ -191,6 +200,7 @@ impl NotRecovered for EnumValue {
             arguments: vec![Expr::not_recovered()],
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.arguments.iter().any(|arg| arg.is_not_recovered())
     }
@@ -203,6 +213,7 @@ impl NotRecovered for ErrorValue {
             fields: vec![(Token::not_recovered(), Expr::not_recovered())],
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.fields.iter().any(|(_, expr)| expr.is_not_recovered())
     }
@@ -212,6 +223,7 @@ impl NotRecovered for Stmt {
     fn not_recovered() -> Self {
         Stmt::Expression(Box::new(Expr::not_recovered()))
     }
+
     fn is_not_recovered(&self) -> bool {
         match self {
             Stmt::Expression(expr) => expr.is_not_recovered(),
@@ -229,6 +241,7 @@ impl NotRecovered for LetStmt {
             expr: Expr::not_recovered(),
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.expr.is_not_recovered()
     }
@@ -241,6 +254,7 @@ impl NotRecovered for Assignment {
             value: Box::new(Expr::not_recovered()),
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.value.is_not_recovered()
     }
@@ -254,6 +268,7 @@ impl NotRecovered for ForStmt {
             body: Box::new(Block::not_recovered()),
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.iterable.is_not_recovered() || self.body.is_not_recovered()
     }
@@ -266,6 +281,7 @@ impl NotRecovered for WhileStmt {
             body: Box::new(Block::not_recovered()),
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.condition.is_not_recovered() || self.body.is_not_recovered()
     }
@@ -278,6 +294,7 @@ impl NotRecovered for DoWhileStmt {
             condition: Expr::not_recovered(),
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.body.is_not_recovered() || self.condition.is_not_recovered()
     }
@@ -293,6 +310,7 @@ impl NotRecovered for FunctionDecl {
             generic_params: vec![Type::not_recovered()],
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.params.iter().any(|param| param.is_not_recovered()) || self.body.is_not_recovered()
     }
@@ -305,6 +323,7 @@ impl NotRecovered for Parameter {
             param_type: Type::not_recovered(),
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.param_type.is_not_recovered()
     }
@@ -318,6 +337,7 @@ impl NotRecovered for StructDecl {
             generic_params: vec![Type::not_recovered()],
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.fields.iter().any(|field| field.is_not_recovered())
     }
@@ -330,6 +350,7 @@ impl NotRecovered for StructField {
             field_type: Type::not_recovered(),
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.field_type.is_not_recovered()
     }
@@ -342,6 +363,7 @@ impl NotRecovered for EnumDecl {
             variants: vec![EnumVariant::not_recovered()],
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.variants
             .iter()
@@ -353,6 +375,7 @@ impl NotRecovered for EnumVariant {
     fn not_recovered() -> Self {
         EnumVariant::Simple(Token::not_recovered())
     }
+
     fn is_not_recovered(&self) -> bool {
         matches!(self, EnumVariant::Simple(token) if token.is_not_recovered())
     }
@@ -365,6 +388,7 @@ impl NotRecovered for ErrorDecl {
             variants: vec![ErrorVariant::not_recovered()],
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.variants
             .iter()
@@ -380,6 +404,7 @@ impl NotRecovered for ErrorVariant {
             message: Token::not_recovered(),
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.fields.iter().any(|field| field.is_not_recovered())
     }
@@ -393,6 +418,7 @@ impl NotRecovered for ExtensionDecl {
             functions: vec![FunctionDecl::not_recovered()],
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.functions.iter().any(|func| func.is_not_recovered())
     }
@@ -402,6 +428,7 @@ impl NotRecovered for Type {
     fn not_recovered() -> Self {
         Type::NotRecovered
     }
+
     fn is_not_recovered(&self) -> bool {
         matches!(self, Type::NotRecovered)
     }
@@ -413,6 +440,7 @@ impl NotRecovered for Program {
             declarations: vec![Declaration::not_recovered()],
         }
     }
+
     fn is_not_recovered(&self) -> bool {
         self.declarations.iter().any(|decl| decl.is_not_recovered())
     }
@@ -422,7 +450,7 @@ impl NotRecovered for (Token, Expr) {
     fn not_recovered() -> Self {
         (Token::not_recovered(), Expr::not_recovered())
     }
-    
+
     fn is_not_recovered(&self) -> bool {
         self.0.is_not_recovered() || self.1.is_not_recovered()
     }
@@ -432,6 +460,7 @@ impl NotRecovered for Token {
     fn not_recovered() -> Self {
         Token::Eof(FilePointer::default())
     }
+
     fn is_not_recovered(&self) -> bool {
         matches!(self, Token::Eof(e) if *e == FilePointer::default())
     }
