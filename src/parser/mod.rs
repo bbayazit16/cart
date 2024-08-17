@@ -8,7 +8,7 @@
 //!
 //! The parser attempts to parse three main constructs: Declarations, Statements, and Expressions.
 //!
-//! To see proper documentation of the grammar, see [`grammar.md`].
+//! To see proper documentation of the grammar, see [`grammar`].
 //!
 //! This module provides macros. Macros automatically implement token matching for the `Parser`.
 //!
