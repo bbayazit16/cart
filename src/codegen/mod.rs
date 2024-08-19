@@ -13,7 +13,10 @@ use crate::codegen::symbol_table::SymbolTable;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
+use inkwell::types::BasicType;
+use inkwell::values::PointerValue;
 
+mod cart_type;
 pub(crate) mod compiler;
 mod declarations;
 mod expressions;
@@ -60,5 +63,25 @@ impl<'ctx> CodeGen<'ctx> {
             self.generate_declaration(declaration);
         }
         &self.module
+    }
+
+    /// Allocates an alloca at the entry block.
+    pub(super) fn create_entry_block_alloca<T: BasicType<'ctx>>(
+        &self,
+        ty: T,
+        name: &str,
+    ) -> PointerValue<'ctx> {
+        // https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl07.html
+        // > mem2reg only looks for alloca instructions in the entry block of the function.
+        // > Being in the entry block guarantees that the alloca is only executed once,
+        // > which makes analysis simpler.
+        let entry_block = self.builder.get_insert_block().unwrap();
+        let function = entry_block.get_parent().unwrap();
+        let entry_builder = self.context.create_builder();
+        entry_builder.position_at_end(function.get_first_basic_block().unwrap());
+
+        entry_builder
+            .build_alloca(ty, name)
+            .expect("Failed to allocate variable")
     }
 }

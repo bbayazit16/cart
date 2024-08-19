@@ -120,4 +120,10 @@ macro_rules! token_value {
             _ => panic!("Must be an identifier"),
         }
     };
+    ($ident:expr, $ty:ident) => {
+        match $ident {
+            $crate::token::Token::$ty(_, s) => s.to_string(),
+            _ => panic!("Must be type {}", stringify!($ty)),
+        }
+    };
 }

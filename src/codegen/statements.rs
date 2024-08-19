@@ -2,6 +2,7 @@ use crate::ast::{LetStmt, Stmt};
 use crate::codegen::symbol_table::Variable;
 use crate::codegen::CodeGen;
 use crate::token_value;
+use inkwell::types::BasicTypeEnum;
 
 impl<'ctx> CodeGen<'ctx> {
     /// Generates the LLVM IR for a statement.
@@ -23,21 +24,25 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Generates LLVM IR for let statements.
     fn generate_let_stmt(&mut self, let_stmt: &LetStmt) {
-        let value = self.generate_expression(&let_stmt.expr).unwrap();
+        let (value_type, value) = self.generate_expression(&let_stmt.expr).unwrap();
         let name = token_value!(&let_stmt.name);
-        if let_stmt.is_mut {
-            let alloca = self
-                .builder
-                .build_alloca(value.get_type(), &name)
-                .expect("Failed to allocate variable");
-            // entry block alloca?
-            self.builder.build_store(alloca, value).unwrap();
-            self.symbol_table
-                .add_variable(name, Variable::Mutable(alloca));
+
+        let alloca;
+        if value_type.is_alloca {
+            alloca = value.into_pointer_value();
         } else {
-            self.symbol_table
-                .add_variable(name, Variable::Immutable(value));
+            let basic_type_enum: BasicTypeEnum = value_type.clone().into();
+            alloca = self.create_entry_block_alloca(basic_type_enum, &name);
+            self.builder.build_store(alloca, value).unwrap();
         }
+
+        let variable = if let_stmt.is_mut {
+            Variable::Mutable(value_type, alloca)
+        } else {
+            Variable::Immutable(value_type, alloca)
+        };
+
+        self.symbol_table.add_variable(name, variable);
     }
 
     // Generates LLVM IR for return expressions.
