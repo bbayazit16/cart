@@ -16,7 +16,6 @@ impl<'ctx> CodeGen<'ctx> {
             _ => todo!(),
         };
     }
-    
 
     /// Generates the LLVM IR for a function declaration.
     fn generate_function(&mut self, function_decl: &FunctionDecl) {
@@ -50,11 +49,9 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(basic_block);
 
         let basic_value_enum = self.generate_block(&function_decl.body, variables_to_add);
-        // dbg!(&basic_value_enum);
         let basic_value = basic_value_enum
             .as_ref()
             .map(|(_, val)| val as &dyn BasicValue);
-        // dbg!(&basic_block.get_terminator());
         self.builder.build_return(basic_value).unwrap();
 
         // // If there's a return value that's already generated, return that value.

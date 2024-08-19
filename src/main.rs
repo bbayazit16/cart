@@ -8,6 +8,7 @@ use crate::parser::Parser;
 use clap::Parser as ClapParser;
 
 mod ast;
+mod cart_std;
 mod cli;
 mod codegen;
 mod context;
@@ -44,11 +45,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 end.duration_since(start).as_micros()
             );
 
-            let ctx = inkwell::context::Context::create();
             let start = std::time::Instant::now();
             compile(
                 &mut program,
-                &ctx,
                 matches!(cli.command, Commands::Run(_)),
                 options,
             );

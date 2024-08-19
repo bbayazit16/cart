@@ -262,24 +262,40 @@ impl<'ctx> CodeGen<'ctx> {
             })
             .collect();
 
-        if callee.get_type().get_return_type().is_none() {
-            None
+        let call_site = self
+            .builder
+            .build_call(callee, &args, "call")
+            .expect("Failed to build call");
+
+        if let Some(return_type) = callee.get_type().get_return_type() {
+            let return_type = return_type.as_basic_type_enum().into();
+            let return_value = call_site
+                .try_as_basic_value()
+                .left()
+                .expect("Return type unsupported yet");
+            Some((return_type, return_value))
         } else {
-            Some((
-                callee
-                    .get_type()
-                    .get_return_type()
-                    .expect("Return type not found")
-                    .as_basic_type_enum()
-                    .into(),
-                self.builder
-                    .build_call(callee, &args, "call")
-                    .expect("Failed to build call")
-                    .try_as_basic_value()
-                    .left()
-                    .expect("Return type unsupported yet"),
-            ))
+            None
         }
+
+        // if callee.get_type().get_return_type().is_none() {
+        //     None
+        // } else {
+        //     Some((
+        //         callee
+        //             .get_type()
+        //             .get_return_type()
+        //             .expect("Return type not found")
+        //             .as_basic_type_enum()
+        //             .into(),
+        //         self.builder
+        //             .build_call(callee, &args, "call")
+        //             .expect("Failed to build call")
+        //             .try_as_basic_value()
+        //             .left()
+        //             .expect("Return type unsupported yet"),
+        //     ))
+        // }
     }
 
     /// Generates LLVM IR for if expressions.

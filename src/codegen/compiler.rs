@@ -13,15 +13,12 @@ use std::path::{Path, PathBuf};
 /// - `context` - The inkwell context.
 /// - `run` - If true, runs the executable after compilation.
 /// - `options` - The compiler options.
-pub(crate) fn compile(
-    ast: &mut Program,
-    context: &inkwell::context::Context,
-    run: bool,
-    options: &CommonOptions,
-) {
+pub(crate) fn compile(ast: &mut Program, run: bool, options: &CommonOptions) {
     lower(ast);
 
-    let mut codegen = CodeGen::new(context, Some(&options.entrypoint));
+    let context = inkwell::context::Context::create();
+
+    let mut codegen = CodeGen::new(&context, Some(&options.entrypoint));
     let module = codegen.generate(ast);
 
     Target::initialize_native(&InitializationConfig::default())
@@ -92,6 +89,8 @@ fn link_object_file(object_file: &PathBuf, output_executable: &PathBuf) {
         .arg(object_file)
         .arg("-o")
         .arg(output_executable)
+        .arg("-L.")
+        .arg("-lcartstd")
         .status()
         .expect("Failed to execute linker");
 

@@ -47,6 +47,9 @@ impl<'ctx> CodeGen<'ctx> {
             .map_or("main", |s| s.as_ref())
             .to_string();
         let module = context.create_module(&module_name_str);
+
+        Self::add_std_functions(context, &module);
+
         let builder = context.create_builder();
         CodeGen {
             context,
@@ -54,6 +57,18 @@ impl<'ctx> CodeGen<'ctx> {
             builder,
             symbol_table: SymbolTable::default(),
         }
+    }
+
+    /// Adds the standard library functions to the module.
+    /// The standard library functions are defined in the `cart_std` module.
+    fn add_std_functions(context: &'ctx Context, module: &Module<'ctx>) {
+        module.add_function(
+            "println",
+            context
+                .i32_type()
+                .fn_type(&[context.i32_type().into()], false),
+            None,
+        );
     }
 
     /// Generate the LLVM IR from the program AST.
