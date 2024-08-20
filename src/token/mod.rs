@@ -61,6 +61,7 @@ define_tokens_with_display! {
     Number(String, bool),
 
     // Keywords
+    Self_,      // self
     Enum,       // enum
     Error,      // error
     And,        // and

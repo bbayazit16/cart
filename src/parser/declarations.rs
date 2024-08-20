@@ -85,6 +85,7 @@ impl Parser {
             return_type,
             body,
             generic_params,
+            is_self: false,
         })
     }
 
@@ -112,7 +113,7 @@ impl Parser {
         })
     }
 
-    // extensionDecl       → "extension" IDENTIFIER genericArgs? "{" function* "}" ;
+    // extensionDecl       → "extension" IDENTIFIER genericArgs? "{" funcDecl* "}" ;
     fn parse_extension(&mut self) -> Result<ast::ExtensionDecl, CompileError> {
         self.consume_extension()?;
 
@@ -124,7 +125,7 @@ impl Parser {
 
         let mut functions = Vec::new();
         while !self.match_rbrace() && !self.at_end() {
-            functions.push(self.parse_function()?);
+            functions.push(self.parse_self_permitting_func()?);
         }
 
         self.consume_rbrace()?;
@@ -132,6 +133,60 @@ impl Parser {
             name,
             generic_params,
             functions,
+        })
+    }
+
+    // selfPermFuncDecl    → "func" selfPermittingFunc ;
+    // selfPermittingFunc → IDENTIFIER genericArgs? "(" "self"? ( "," parameters )? ")"
+    //                      ( "->" type )?
+    //                      block ;
+    fn parse_self_permitting_func(&mut self) -> Result<ast::FunctionDecl, CompileError> {
+        self.consume_func()?;
+        let name = self.consume_identifier()?;
+
+        let generic_params = self.parse_optional_generic_params()?;
+
+        self.consume_lparen()?;
+
+        // let params = if self.match_rparen() {
+        //     Vec::new()
+        // } else {
+        //     self.parse_params()?
+        // };
+        let (params, is_self) = if self.match_rparen() {
+            (Vec::new(), false)
+        } else if self.match_self() {
+            self.advance(); // consume "self"
+            if self.match_comma() {
+                self.advance(); // consume ",'
+                let params = self.parse_params()?;
+                (params, true)
+            } else {
+                (Vec::new(), true)
+            }
+        } else {
+            let params = self.parse_params()?;
+            (params, false)
+        };
+
+        self.consume_rparen()?;
+
+        let return_type = if self.match_thin_arrow() {
+            self.advance();
+            self.parse_type()?
+        } else {
+            ast::Type::Empty
+        };
+
+        let body = self.parse_block()?;
+
+        Ok(ast::FunctionDecl {
+            name,
+            params,
+            return_type,
+            body,
+            generic_params,
+            is_self,
         })
     }
 }

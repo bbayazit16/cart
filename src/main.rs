@@ -39,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let start = std::time::Instant::now();
             let mut program = Parser::new(context).parse();
             let end = std::time::Instant::now();
-
+            
             if options.time_compilation {
                 println!(
                     "Parsing complete in {}µ",

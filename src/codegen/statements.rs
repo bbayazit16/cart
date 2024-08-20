@@ -10,13 +10,10 @@ impl<'ctx> CodeGen<'ctx> {
             Stmt::Expression(expr) => {
                 self.generate_expression(expr);
             }
-            Stmt::Return(_) => unreachable!("Return statement"),
-            // Stmt::Return(ref expr) => {
-            //     self.generate_return(expr);
-            // }
             Stmt::Let(ref let_stmt) => {
                 self.generate_let_stmt(let_stmt);
-            }
+            },
+            Stmt::Return(_) => unreachable!("Return statement"),
             _ => todo!(),
         }
     }

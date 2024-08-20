@@ -5,7 +5,6 @@
 #[macro_export]
 macro_rules! generate_consume_impl {
     ($($name:ident => $pattern:pat, $expected:expr),+ $(,)?) => {
-        use $crate::errors::{SyntaxError, CompileError};
         impl $crate::parser::Parser {
             $(
                 pub(super) fn $name(&mut self) -> Result<$crate::token::Token, CompileError> {

@@ -24,10 +24,11 @@ errorVariantList    → errorVariant ( "," errorVariant )* ;
 errorVariant        → IDENTIFIER ( "(" structList ")" )? "=" STRING_LITERAL ;
 
 funcDecl            → "func" function ;
+selfPermFuncDecl    → "func" selfPermittingFunc ;
 
 structDecl          → "struct" IDENTIFIER genericArgs? "{" structList? "}" ;
 
-extensionDecl       → "extension" IDENTIFIER genericArgs? "{" function* "}" ;
+extensionDecl       → "extension" IDENTIFIER genericArgs? "{" selfPermFuncDecl* "}" ;
 
 ### Statements
 
@@ -53,7 +54,8 @@ expression     → assignment
 
 assignment     → ( ( ifExpr "." ) | ( matchExpr "." ) | ( call "." ) )?
                  IDENTIFIER "=" expression
-               | ifExpr ;
+               | ifExpr 
+               | arrayAccess "=" expression ;
 
 ifExpr         → "if" expression block 
                  ( "elif" expression block )*
@@ -79,7 +81,7 @@ call           → primary ( "." IDENTIFIER )* "(" arguments? ")"
 
 primary        → "true" | "false"
                | NUMBER | STRING | IDENTIFIER | "(" expression ")"
-               | block | structLiteral | enumValue | errorValue
+               | block | structLiteral | enumValue | errorValue | arrayLiteral | arrayAccess
                | IDENTIFIER ( "." IDENTIFIER )+ ;
 
 block          → "{" declaration* expression? "}" ;
@@ -88,6 +90,9 @@ structLiteral  → IDENTIFIER "{" structParamValues? "}" ;
 enumValue      → IDENTIFIER ( "::" IDENTIFIER )? ( "(" arguments? ")" )? ;
 
 errorValue     → IDENTIFIER ( "::" IDENTIFIER )? ( "(" structParamValues? ) ")" )? ;
+
+arrayLiteral   → "[" arguments "]" ;
+arrayAccess    → expression "[" expression "]" ;
 
 ### Types
 
@@ -100,6 +105,9 @@ genericArgs    → "<" type ( "," type )* ">" ;
 ### Utility rules
 
 function           → IDENTIFIER genericArgs? "(" parameters? ")" 
+                     ( "->" type )? 
+                     block ;
+selfPermittingFunc → IDENTIFIER genericArgs? "(" "self"? ( "," parameters )? ")" 
                      ( "->" type )? 
                      block ;
 parameters         → parameter ( "," parameter )* ;

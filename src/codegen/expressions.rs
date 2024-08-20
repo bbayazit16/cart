@@ -1,4 +1,8 @@
-use crate::ast::{Block, CallExpr, Expr, IfExpr, Literal, StructAccessExpr, StructLiteral};
+use crate::ast::{
+    AssignmentExpr, Block, CallExpr, Expr, IfExpr, Literal, MethodCallExpr, StructAccessExpr,
+    StructLiteral,
+};
+use crate::codegen::cart_array::CartArray;
 use crate::codegen::cart_string::CartString;
 use crate::codegen::cart_type::CartType;
 use crate::codegen::symbol_table::Variable;
@@ -28,7 +32,13 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::StructAccess(ref struct_access) => {
                 Some(self.generate_struct_access(struct_access))
             }
-            _ => todo!(),
+            Expr::Assignment(ref assignment) => Some(self.generate_assignment(assignment)),
+            Expr::MethodCall(ref method_call) => self.generate_method_call(method_call),
+            Expr::ArrayLiteral(ref expressions) => Some(self.generate_array_literal(expressions)),
+            e => {
+                dbg!(&e);
+                unimplemented!()
+            }
         }
     }
 
@@ -290,25 +300,6 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             None
         }
-
-        // if callee.get_type().get_return_type().is_none() {
-        //     None
-        // } else {
-        //     Some((
-        //         callee
-        //             .get_type()
-        //             .get_return_type()
-        //             .expect("Return type not found")
-        //             .as_basic_type_enum()
-        //             .into(),
-        //         self.builder
-        //             .build_call(callee, &args, "call")
-        //             .expect("Failed to build call")
-        //             .try_as_basic_value()
-        //             .left()
-        //             .expect("Return type unsupported yet"),
-        //     ))
-        // }
     }
 
     /// Generates LLVM IR for if expressions.
@@ -410,18 +401,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .expect("Failed to store field");
         }
 
-        // let struct_value = self
-        //     .builder
-        //     .build_load(
-        //         struct_type,
-        //         struct_ptr,
-        //         &format!("{}.value", struct_literal_name),
-        //     )
-        //     .expect("Failed to load struct");
-        //
-        // let cart_type: CartType = struct_type.as_basic_type_enum().into();
-        // (cart_type.with_name(struct_literal_name), struct_value)
-
         // Return the pointer to the struct
         let cart_type: CartType = struct_type.as_basic_type_enum().into();
         (
@@ -476,5 +455,139 @@ impl<'ctx> CodeGen<'ctx> {
             .expect("Failed to build GEP");
 
         (field_type.clone().with_alloca(), gep.as_basic_value_enum())
+    }
+
+    /// Generates LLVM IR for assignment expressions.
+    fn generate_assignment(
+        &mut self,
+        assignment: &AssignmentExpr,
+    ) -> (CartType<'ctx>, BasicValueEnum<'ctx>) {
+        let (value_type, value) = self.generate_expression(&assignment.r_value).unwrap();
+
+        let value = if value_type.is_alloca {
+            self.builder
+                .build_load(
+                    value_type.type_enum,
+                    value.into_pointer_value(),
+                    "loaded_value",
+                )
+                .expect("Failed to load value")
+        } else {
+            value
+        };
+
+        let (_, l_value_expr) = self
+            .generate_expression(&assignment.l_value)
+            .expect("Failed to generate l_value expression");
+
+        let l_value = l_value_expr.into_pointer_value();
+
+        self.builder
+            .build_store(l_value, value)
+            .expect("Failed to store value");
+
+        (value_type, value)
+    }
+
+    /// Generates LLVM IR for method call expressions.
+    fn generate_method_call(
+        &mut self,
+        method_call: &MethodCallExpr,
+    ) -> Option<(CartType<'ctx>, BasicValueEnum<'ctx>)> {
+        let (cart_ty, callee_expr_ptr) = self
+            .generate_expression(&method_call.object)
+            .expect("Callee expression not found");
+
+        let method_name_str = token_value!(&method_call.method_name);
+        // TODO: Support multiple fields
+        let function_name = format!(
+            "{}-{}",
+            cart_ty.name().expect("Invalid struct name"),
+            method_name_str
+        );
+
+        let callee = self
+            .module
+            .get_function(&function_name)
+            .expect("Callee function not found");
+
+        // TODO: Support for static functions
+        if callee.count_params() - 1 != method_call.arguments.len() as u32 {
+            panic!("Incorrect # of arguments")
+        }
+
+        // add support for non-self here
+        let mut arguments = vec![callee_expr_ptr.into()];
+        for arg in method_call.arguments.iter() {
+            let (arg_type, arg_value) = self
+                .generate_expression(arg)
+                .expect("Failed to generate arg");
+            if arg_type.is_alloca {
+                // TODO: pass by reference for some types
+                // load the value
+                let loaded = self
+                    .builder
+                    .build_load(
+                        arg_type.type_enum,
+                        arg_value.into_pointer_value(),
+                        "loaded_var",
+                    )
+                    .expect("Failed to load value");
+                arguments.push(loaded.into());
+            } else {
+                arguments.push(arg_value.into());
+            }
+        }
+
+        let call_site = self
+            .builder
+            .build_call(callee, &arguments, "call")
+            .expect("Failed to build call");
+
+        if let Some(return_type) = callee.get_type().get_return_type() {
+            let return_type: BasicTypeEnum = return_type.as_basic_type_enum();
+            let return_value = call_site
+                .try_as_basic_value()
+                .left()
+                .expect("Return type unsupported yet");
+            Some((return_type.into(), return_value))
+        } else {
+            None
+        }
+    }
+
+    /// Generates LLVM IR for array literals.
+    fn generate_array_literal(
+        &mut self,
+        expressions: &[Expr],
+    ) -> (CartType<'ctx>, BasicValueEnum<'ctx>) {
+        let values = expressions
+            .iter()
+            .map(|expr| {
+                let (ty, value) = self.generate_expression(expr).unwrap();
+                if ty.is_alloca {
+                    self.builder
+                        .build_load(ty.type_enum, value.into_pointer_value(), "loaded_value")
+                        .expect("Failed to load value")
+                } else {
+                    value
+                }
+            })
+            .collect::<Vec<BasicValueEnum<'ctx>>>();
+
+        let array_type = values[0].get_type();
+        let array = CartArray::new(self.context, array_type.into());
+        let array_ptr = array.allocate_array(self.context, &self.builder, values.len() as u32);
+        for value in values.iter() {
+            array.push_element(&self.builder, self.context, array_ptr, *value);
+        }
+
+        let cart_ty: CartType = self
+            .context
+            .ptr_type(AddressSpace::default())
+            .as_basic_type_enum()
+            .into();
+
+        (cart_ty.with_array(), array_ptr.as_basic_value_enum())
     }
 }

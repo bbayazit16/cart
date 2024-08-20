@@ -5,8 +5,6 @@ use std::collections::HashMap;
 
 /// Represents a variable in the codegen.
 /// The variable can either be mutable or immutable.
-/// - Mutable: The variable is stored as alloca in the stack.
-/// - Immutable: The variable is stored as a value.
 #[derive(Debug, Clone)]
 pub(crate) enum Variable<'ctx> {
     Mutable(CartType<'ctx>, PointerValue<'ctx>),

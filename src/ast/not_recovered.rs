@@ -308,6 +308,7 @@ impl NotRecovered for FunctionDecl {
             return_type: Type::not_recovered(),
             body: Block::not_recovered(),
             generic_params: vec![Type::not_recovered()],
+            is_self: false,
         }
     }
 

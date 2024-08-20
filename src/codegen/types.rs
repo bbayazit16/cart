@@ -39,7 +39,7 @@ impl Type {
 pub(super) fn create_function_type<'ctx>(
     context: &'ctx Context,
     return_type: AnyTypeEnum<'ctx>,
-    param_types: Vec<AnyTypeEnum<'ctx>>,
+    param_types: Vec<BasicTypeEnum<'ctx>>,
 ) -> FunctionType<'ctx> {
     let return_type = match return_type {
         AnyTypeEnum::VoidType(_) => None,
@@ -50,11 +50,7 @@ pub(super) fn create_function_type<'ctx>(
 
     let param_types: Vec<BasicMetadataTypeEnum> = param_types
         .into_iter()
-        .map(|ty| match ty {
-            AnyTypeEnum::IntType(ty) => BasicMetadataTypeEnum::IntType(ty),
-            AnyTypeEnum::FloatType(ty) => BasicMetadataTypeEnum::FloatType(ty),
-            _ => todo!("Other parameter types"),
-        })
+        .map(BasicMetadataTypeEnum::from)
         .collect();
 
     match return_type {

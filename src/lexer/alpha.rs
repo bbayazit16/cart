@@ -151,6 +151,7 @@ impl Lexer {
         let end = self.file_pointer.file_position;
         let text = self.unchecked_index_into_buffer(start, end);
         match text {
+            "self" => Token::Self_(starting_file_position),
             "enum" => Token::Enum(starting_file_position),
             "error" => Token::Error(starting_file_position),
             "and" => Token::And(starting_file_position),

@@ -11,7 +11,8 @@ impl Parser {
 
     // assignment     → ( ( ifExpr "." ) | ( matchExpr "." ) | ( call "." ) )?
     //                  IDENTIFIER "=" expression
-    //                | ifExpr ;
+    //                | ifExpr 
+    //                | arrayAccess "=" expression ;
     fn parse_assignment(&mut self) -> Result<ast::Expr, CompileError> {
         // Assume expr is an r-value
         let expr = self.parse_if_expr()?;
@@ -84,10 +85,7 @@ impl Parser {
             };
             self.consume_rbrace()?;
 
-            Ok(ast::Expr::Match(Box::new(ast::MatchExpr {
-                value,
-                arms,
-            })))
+            Ok(ast::Expr::Match(Box::new(ast::MatchExpr { value, arms })))
         } else {
             self.parse_logical_or()
         }
@@ -201,7 +199,7 @@ impl Parser {
     //                | primary ;
     fn parse_call(&mut self) -> Result<ast::Expr, CompileError> {
         let primary = self.parse_primary()?;
-        // TODO: probably not necessary, already delegated to primary above
+        // Below is not necessary, already delegated to primary above. But kept for clarity.
         let callee = if self.match_dot() {
             self.advance();
             ast::Expr::StructAccess(Box::new(self.partial_parse_struct_access(primary)?))
@@ -217,10 +215,21 @@ impl Parser {
                 self.parse_arguments()?
             };
             self.consume_rparen()?;
-            Ok(ast::Expr::Call(Box::new(ast::CallExpr {
-                callee,
-                arguments,
-            })))
+            if let ast::Expr::StructAccess(mut struct_access) = callee {
+                // Then, it is a method call.
+                let method_name = struct_access.fields.pop().unwrap();
+                Ok(ast::Expr::MethodCall(Box::new(ast::MethodCallExpr {
+                    object: struct_access.object,
+                    fields: struct_access.fields,
+                    method_name,
+                    arguments
+                })))
+            } else {
+                Ok(ast::Expr::Call(Box::new(ast::CallExpr {
+                    callee,
+                    arguments,
+                })))
+            }
         } else {
             // Directly return callee
             // That is the original `primary`, but moved.
@@ -230,7 +239,7 @@ impl Parser {
 
     // primary        → "true" | "false"
     //                | NUMBER | STRING | IDENTIFIER | "(" expression ")"
-    //                | block | structLiteral | enumValue
+    //                | block | structLiteral | enumValue | errorValue | arrayLiteral | arrayAccess
     //                | IDENTIFIER ( "." IDENTIFIER )+ ;
     fn parse_primary(&mut self) -> Result<ast::Expr, CompileError> {
         if self.match_bool() {
@@ -251,6 +260,9 @@ impl Parser {
         } else if self.match_lbrace() {
             // block
             Ok(ast::Expr::Block(Box::new(self.parse_block()?)))
+        } else if self.match_lbracket() {
+            // arrayLiteral
+            self.parse_array_literal()
         } else {
             // if self.match_lbrace() {
             //     // structLiteral
@@ -290,10 +302,38 @@ impl Parser {
                 Ok(ast::Expr::StructAccess(Box::new(
                     self.partial_parse_struct_access(ast::Expr::Variable(ident, None))?,
                 )))
+            } else if self.match_lbracket() {
+                // arrayAccess
+                // TODO: allow for arrayAccess to be a part of a larger expression
+                let index = self.partial_parse_array_access()?;
+                Ok(ast::Expr::ArrayAccess(Box::new(ast::ArrayAccessExpr {
+                    array: ast::Expr::Variable(ident, None),
+                    index,
+                })))
             } else {
                 // IDENTIFIER
                 Ok(ast::Expr::Variable(ident, None))
             }
         }
+    }
+
+    // arrayLiteral   → "[" arguments ","? "]" ;
+    fn parse_array_literal(&mut self) -> Result<ast::Expr, CompileError> {
+        self.consume_lbracket()?;
+        let arguments = if self.match_rbracket() {
+            Vec::new()
+        } else {
+            self.parse_arguments()?
+        };
+        self.consume_rbracket()?;
+        Ok(ast::Expr::ArrayLiteral(arguments))
+    }
+
+    // arrayAccess    → expression "[" expression "]" ;
+    fn partial_parse_array_access(&mut self) -> Result<ast::Expr, CompileError> {
+        self.consume_lbracket()?;
+        let expr = self.parse_expr()?;
+        self.consume_rbracket()?;
+        Ok(expr)
     }
 }

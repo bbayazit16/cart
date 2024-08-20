@@ -1,4 +1,5 @@
 use crate::context::FilePointer;
+use crate::errors::{CompileError, SyntaxError};
 use crate::parser::Parser;
 use crate::token::Token;
 use crate::{generate_consume_impl, generate_match_impl};
@@ -57,8 +58,24 @@ impl Parser {
     }
 }
 
+// Manually implemented consume_identifier, as generate_consume_impl is restricted to one token
+impl Parser {
+    pub(super) fn consume_identifier(&mut self) -> Result<Token, CompileError> {
+        let token = self.advance();
+        match token {
+            Token::Identifier(..) | Token::Self_(..) => Ok(token),
+            _ => {
+                let e = CompileError::Syntax(SyntaxError::ExpectedDifferentCharacter {
+                    file_pointer: token.get_file_pointer(),
+                    expected: "an identifier".to_string(),
+                });
+                Err(e)
+            }
+        }
+    }
+}
+
 generate_consume_impl! {
-    consume_identifier => Token::Identifier(..), "an identifier",
     consume_string => Token::String(..), "a string literal",
     consume_lbrace => Token::LeftBrace(..), '{',
     consume_rbrace => Token::RightBrace(..), '}',
@@ -81,7 +98,9 @@ generate_consume_impl! {
     consume_while => Token::While(..) , "while",
     consume_in => Token::In(..), "in",
     consume_do => Token::Do(..) , "do",
-    consume_fat_arrow => Token::FatArrow(..), "=>"
+    consume_fat_arrow => Token::FatArrow(..), "=>",
+    consume_lbracket => Token::LeftBracket(..), '[',
+    consume_rbracket => Token::RightBracket(..), ']',
 }
 
 generate_match_impl! {
@@ -121,4 +140,7 @@ generate_match_impl! {
     match_pipe_pipe => Token::PipePipe(..),
     match_dot => Token::Dot(..),
     match_underscore => Token::Underscore(..),
+    match_lbracket => Token::LeftBracket(..),
+    match_rbracket => Token::RightBracket(..),
+    match_self => Token::Self_(..),
 }

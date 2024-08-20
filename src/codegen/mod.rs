@@ -26,6 +26,7 @@ mod statements;
 mod symbol_table;
 mod type_check;
 mod types;
+mod cart_array;
 
 /// Codegen struct is responsible for generating LLVM IR from the AST.
 /// The struct contains the context, module, builder, and the symbol table.

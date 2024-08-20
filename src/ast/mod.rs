@@ -3,20 +3,14 @@
 //! The AST represents the structure of the source code in a tree format, and allows
 //! LLVM codegen.
 //!
-//! Each of the structs defined in this module implements the display method, for
-//! when debugging without as many details compared to Debug are required.
-//!
-//! Implements the Display trait for all AST nodes.
-//!
 //! Implements lowering, which expands the AST to prepare it for code generation.
 //! The expansion includes things like desugaring, moving elif statements inside one else block,
 //! removing return statements  and inserting implicit block returns, and creating an else
 //! branch for every if expression. This part handles things like early returns from functions.
 //!
-//!
 //! The module implements the `NotRecovered` trait for each of the AST nodes. The returned
 //! value is used as a placeholder when the AST can't be recovered.
-mod display;
+
 pub(crate) mod lowering;
 pub(crate) mod not_recovered;
 
@@ -26,16 +20,25 @@ use crate::token::Token;
 pub(crate) enum Expr {
     Block(Box<Block>),
     Binary(Box<BinaryExpr>),
+    #[allow(unused)]
     Unary(Box<UnaryExpr>),
     Literal(Literal),
+    #[allow(unused)]
     Variable(Token, Option<Type>),
+    #[allow(unused)]
     Assignment(Box<AssignmentExpr>),
     Call(Box<CallExpr>),
     StructAccess(Box<StructAccessExpr>),
+    MethodCall(Box<MethodCallExpr>),
     If(Box<IfExpr>),
+    #[allow(unused)]
     Match(Box<MatchExpr>),
     StructLiteral(Box<StructLiteral>),
+    #[allow(unused)]
     EnumValue(Box<EnumValue>),
+    ArrayLiteral(Vec<Expr>),
+    #[allow(unused)]
+    ArrayAccess(Box<ArrayAccessExpr>),
     NotRecovered,
 }
 
@@ -43,12 +46,30 @@ pub(crate) enum Expr {
 pub(crate) enum Declaration {
     FunctionDecl(Box<FunctionDecl>),
     StructDecl(Box<StructDecl>),
+    #[allow(unused)]
     EnumDecl(Box<EnumDecl>),
+    #[allow(unused)]
     ErrorDecl(Box<ErrorDecl>),
+    #[allow(unused)]
     ExtensionDecl(Box<ExtensionDecl>),
     StatementDecl(Box<Stmt>),
     #[allow(unused)]
     NotRecovered,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ArrayAccessExpr {
+    pub array: Expr,
+    pub index: Expr,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct MethodCallExpr {
+    pub object: Expr,
+    #[allow(unused)]
+    pub fields: Vec<Token>,
+    pub method_name: Token,
+    pub arguments: Vec<Expr>,
 }
 
 #[derive(Debug, Clone)]
@@ -66,6 +87,7 @@ pub(crate) struct BinaryExpr {
 
 #[derive(Debug, Clone)]
 pub(crate) struct UnaryExpr {
+    #[allow(unused)]
     pub operator: Token,
     pub right: Expr,
 }
@@ -74,6 +96,7 @@ pub(crate) struct UnaryExpr {
 pub(crate) enum Literal {
     Number(Token),
     String(Token),
+    #[allow(unused)]
     Bool(Token),
     #[allow(unused)]
     None,
@@ -119,8 +142,10 @@ pub(crate) struct MatchArm {
 
 #[derive(Debug, Clone)]
 pub(crate) enum Pattern {
+    #[allow(unused)]
     Identifier(Token),
     Wildcard,
+    #[allow(unused)]
     EnumOrStructVariant(PatternType, Token, Vec<Token>),
 }
 
@@ -138,7 +163,9 @@ pub(crate) struct StructLiteral {
 
 #[derive(Debug, Clone)]
 pub(crate) struct EnumValue {
+    #[allow(unused)]
     pub name: Token,
+    #[allow(unused)]
     pub variant: Option<Token>,
     pub arguments: Vec<Expr>,
 }
@@ -153,12 +180,16 @@ pub(crate) struct ErrorValue {
 #[derive(Debug, Clone)]
 pub(crate) enum Stmt {
     Expression(Box<Expr>),
+    #[allow(unused)]
     Use(Vec<Token>),
     Return(Option<Expr>),
     Let(Box<LetStmt>),
     // Assign(Box<Assignment>),
+    #[allow(unused)]
     For(Box<ForStmt>),
+    #[allow(unused)]
     While(Box<WhileStmt>),
+    #[allow(unused)]
     DoWhile(Box<DoWhileStmt>),
 }
 
@@ -166,6 +197,7 @@ pub(crate) enum Stmt {
 pub(crate) struct LetStmt {
     pub name: Token,
     pub is_mut: bool,
+    #[allow(unused)]
     pub set_type: Option<Type>,
     pub expr: Expr,
 }
@@ -179,6 +211,7 @@ pub(crate) struct Assignment {
 
 #[derive(Debug, Clone)]
 pub(crate) struct ForStmt {
+    #[allow(unused)]
     pub iterator: Option<Token>,
     pub iterable: Expr,
     pub body: Box<Block>,
@@ -202,7 +235,9 @@ pub(crate) struct FunctionDecl {
     pub params: Vec<Parameter>,
     pub return_type: Type,
     pub body: Block,
+    #[allow(unused)]
     pub generic_params: Vec<Type>,
+    pub is_self: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -215,6 +250,7 @@ pub(crate) struct Parameter {
 pub(crate) struct StructDecl {
     pub name: Token,
     pub fields: Vec<StructField>,
+    #[allow(unused)]
     pub generic_params: Vec<Type>,
 }
 
@@ -226,6 +262,7 @@ pub(crate) struct StructField {
 
 #[derive(Debug, Clone)]
 pub(crate) struct EnumDecl {
+    #[allow(unused)]
     pub name: Token,
     pub variants: Vec<EnumVariant>,
 }
@@ -233,26 +270,33 @@ pub(crate) struct EnumDecl {
 #[derive(Debug, Clone)]
 pub(crate) enum EnumVariant {
     Simple(Token),
+    #[allow(unused)]
     Tuple(Token, Vec<Type>),
+    #[allow(unused)]
     Struct(Token, Vec<StructField>),
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct ErrorDecl {
+    #[allow(unused)]
     pub name: Token,
     pub variants: Vec<ErrorVariant>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct ErrorVariant {
+    #[allow(unused)]
     pub name: Token,
     pub fields: Vec<StructField>,
+    #[allow(unused)]
     pub message: Token,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct ExtensionDecl {
+    #[allow(unused)]
     pub name: Token,
+    #[allow(unused)]
     pub generic_params: Vec<Type>,
     pub functions: Vec<FunctionDecl>,
 }
@@ -261,6 +305,7 @@ pub(crate) struct ExtensionDecl {
 pub(crate) enum Type {
     Simple(Token),
     Empty,
+    #[allow(unused)]
     Generic(Token, Vec<Type>),
     #[allow(unused)]
     GenericDecl(Vec<Type>),
