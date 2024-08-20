@@ -26,7 +26,6 @@ mod statements;
 mod symbol_table;
 mod type_check;
 mod types;
-mod cart_array;
 
 /// Codegen struct is responsible for generating LLVM IR from the AST.
 /// The struct contains the context, module, builder, and the symbol table.
@@ -66,7 +65,7 @@ impl<'ctx> CodeGen<'ctx> {
     /// The standard library functions are defined in the `cart_std` module.
     fn add_std_functions(context: &'ctx Context, module: &Module<'ctx>) {
         module.add_function(
-            "println",
+            "print_number",
             context
                 .void_type()
                 .fn_type(&[context.i32_type().into()], false),
@@ -77,6 +76,35 @@ impl<'ctx> CodeGen<'ctx> {
             context
                 .void_type()
                 .fn_type(&[context.ptr_type(AddressSpace::default()).into()], false),
+            None,
+        );
+        module.add_function(
+            "create_array",
+            context
+                .ptr_type(AddressSpace::default())
+                .fn_type(&[context.i32_type().into()], false),
+            None,
+        );
+        module.add_function(
+            "push_to_array",
+            context.void_type().fn_type(
+                &[
+                    context.ptr_type(AddressSpace::default()).into(),
+                    context.i32_type().into(),
+                ],
+                false,
+            ),
+            None,
+        );
+        module.add_function(
+            "push_to_array_multiple",
+            context.void_type().fn_type(
+                &[
+                    context.ptr_type(AddressSpace::default()).into(),
+                    context.i32_type().into(),
+                ],
+                false,
+            ),
             None,
         );
     }

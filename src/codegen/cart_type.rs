@@ -11,7 +11,6 @@ use inkwell::types::BasicTypeEnum;
 /// - `type_name`: An optional `String` that represents the name of the type.
 /// - `is_alloca`: A `bool` that represents whether the type is an alloca.
 /// - `is_void`: A `bool` that represents whether the type is a void type.
-/// - `is_array`: A `bool` that represents whether the type is an array.
 #[derive(Debug, Clone)]
 pub(super) struct CartType<'ctx> {
     pub type_enum: BasicTypeEnum<'ctx>,
@@ -19,8 +18,6 @@ pub(super) struct CartType<'ctx> {
     pub is_alloca: bool,
     #[allow(unused)]
     pub is_void: bool,
-    #[allow(unused)]
-    pub is_array: bool,
 }
 
 impl<'ctx> CartType<'ctx> {
@@ -32,7 +29,6 @@ impl<'ctx> CartType<'ctx> {
             type_name: Some(type_name),
             is_alloca,
             is_void: false,
-            is_array: false,
         }
     }
 
@@ -66,12 +62,6 @@ impl<'ctx> CartType<'ctx> {
         self.is_alloca = false;
         self
     }
-    
-    /// Set the `is_array` of the `CartType` and return the `CartType`.
-    pub(super) fn with_array(mut self) -> Self {
-        self.is_array = true;
-        self
-    }
 
     /// Get a `CartType` that represents a void type.
     pub(super) fn void(context: &'ctx Context) -> Self {
@@ -81,7 +71,6 @@ impl<'ctx> CartType<'ctx> {
             type_name: None,
             is_alloca: false,
             is_void: true,
-            is_array: false,
         }
     }
 }
@@ -99,7 +88,6 @@ impl<'ctx> From<BasicTypeEnum<'ctx>> for CartType<'ctx> {
             type_name: None,
             is_alloca: false,
             is_void: false,
-            is_array: false,
         }
     }
 }

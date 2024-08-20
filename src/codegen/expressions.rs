@@ -1,8 +1,7 @@
 use crate::ast::{
-    AssignmentExpr, Block, CallExpr, Expr, IfExpr, Literal, MethodCallExpr, StructAccessExpr,
-    StructLiteral,
+    ArrayAccessExpr, AssignmentExpr, Block, CallExpr, Expr, IfExpr, Literal, MethodCallExpr,
+    StructAccessExpr, StructLiteral,
 };
-use crate::codegen::cart_array::CartArray;
 use crate::codegen::cart_string::CartString;
 use crate::codegen::cart_type::CartType;
 use crate::codegen::symbol_table::Variable;
@@ -35,6 +34,7 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::Assignment(ref assignment) => Some(self.generate_assignment(assignment)),
             Expr::MethodCall(ref method_call) => self.generate_method_call(method_call),
             Expr::ArrayLiteral(ref expressions) => Some(self.generate_array_literal(expressions)),
+            Expr::ArrayAccess(ref array_access) => Some(self.generate_array_access(array_access)),
             e => {
                 dbg!(&e);
                 unimplemented!()
@@ -575,19 +575,179 @@ impl<'ctx> CodeGen<'ctx> {
             })
             .collect::<Vec<BasicValueEnum<'ctx>>>();
 
-        let array_type = values[0].get_type();
-        let array = CartArray::new(self.context, array_type.into());
-        let array_ptr = array.allocate_array(self.context, &self.builder, values.len() as u32);
-        for value in values.iter() {
-            array.push_element(&self.builder, self.context, array_ptr, *value);
+        let create_array = self
+            .module
+            .get_function("create_array")
+            .expect("create_array not found");
+        let arr_ptr = self
+            .builder
+            .build_call(
+                create_array,
+                &[self
+                    .context
+                    .i32_type()
+                    .const_int(values.len() as u64, false)
+                    .into()],
+                "array",
+            )
+            .expect("Failed to build call to create_array")
+            .try_as_basic_value()
+            .left()
+            .unwrap();
+
+        let values_ptr = self
+            .builder
+            .build_array_malloc(
+                self.context.i32_type(),
+                self.context
+                    .i32_type()
+                    .const_int(values.len() as u64, false),
+                "values",
+            )
+            .expect("Failed to build array malloc");
+
+        for (i, &value) in values.iter().enumerate() {
+            let index = self.context.i32_type().const_int(i as u64, false);
+            let element_ptr = unsafe {
+                self.builder
+                    .build_gep(self.context.i32_type(), values_ptr, &[index], "element_ptr")
+                    .expect("Failed to build GEP")
+            };
+            self.builder.build_store(element_ptr, value).unwrap();
         }
 
-        let cart_ty: CartType = self
-            .context
-            .ptr_type(AddressSpace::default())
-            .as_basic_type_enum()
-            .into();
+        let multiple_push_fn = self
+            .module
+            .get_function("push_to_array_multiple")
+            .expect("push_to_array_multiple not found");
+        self.builder
+            .build_call(
+                multiple_push_fn,
+                &[
+                    arr_ptr.into(),
+                    values_ptr.into(),
+                    self.context
+                        .i32_type()
+                        .const_int(values.len() as u64, false)
+                        .into(),
+                ],
+                "call_push_multiple",
+            )
+            .expect("Failed to call dynamic_array_push_multiple");
 
-        (cart_ty.with_array(), array_ptr.as_basic_value_enum())
+        // let arr_struct_type = self
+        //     .context
+        //     .struct_type(
+        //         &[
+        //             self.context.i32_type().into(),                        // ref_count
+        //             self.context.i32_type().into(),                        // size
+        //             self.context.i32_type().into(),                        // capacity
+        //             self.context.ptr_type(AddressSpace::default()).into(), // elements
+        //         ],
+        //         false,
+        //     )
+        //     .as_basic_type_enum();
+
+        // TODO: duplicate alloca created in let
+        (
+            CartType::from(
+                self.context
+                    .ptr_type(AddressSpace::default())
+                    .as_basic_type_enum(),
+            ),
+            arr_ptr,
+        )
+        // let array_type = values[0].get_type();
+        // let array = CartArray::new(self.context, array_type.into());
+        // let array_ptr = array.allocate_array(self.context, &self.builder, values.len() as u32);
+        // for value in values.iter() {
+        //     array.push_element(&self.builder, self.context, array_ptr, *value);
+        // }
+        //
+        // let cart_ty: CartType = self
+        //     .context
+        //     .ptr_type(AddressSpace::default())
+        //     .as_basic_type_enum()
+        //     .into();
+
+        // (cart_ty.with_array(), array_ptr.as_basic_value_enum())
+    }
+
+    /// Generates LLVM IR for array access expressions.
+    fn generate_array_access(
+        &mut self,
+        array_access: &ArrayAccessExpr,
+    ) -> (CartType<'ctx>, BasicValueEnum<'ctx>) {
+        let (cart_ty, array_ptr) = self
+            .generate_expression(&array_access.array)
+            .expect("Can't generate array");
+        let (_, index) = self
+            .generate_expression(&array_access.index)
+            .expect("Can't generate index");
+
+        let array_ptr = if cart_ty.is_alloca {
+            self.builder
+                .build_load(
+                    cart_ty.type_enum,
+                    array_ptr.into_pointer_value(),
+                    "loaded_array",
+                )
+                .expect("Failed to load array")
+        } else {
+            array_ptr
+        };
+
+        let arr_struct_type = self
+            .context
+            .struct_type(
+                &[
+                    self.context.i32_type().into(),                        // ref_count
+                    self.context.i32_type().into(),                        // size
+                    self.context.i32_type().into(),                        // capacity
+                    self.context.ptr_type(AddressSpace::default()).into(), // elements
+                ],
+                false,
+            )
+            .as_basic_type_enum();
+
+        let elements_ptr_ptr = self
+            .builder
+            .build_struct_gep(
+                arr_struct_type,
+                array_ptr.into_pointer_value(),
+                3,
+                "elements",
+            )
+            .expect("Failed to build GEP");
+
+        let elements_ptr = self
+            .builder
+            .build_load(
+                self.context.ptr_type(AddressSpace::default()),
+                elements_ptr_ptr,
+                "load_elements_ptr",
+            )
+            .expect("Failed to load elements ptr")
+            .into_pointer_value();
+
+        let gep = unsafe {
+            self.builder
+                .build_gep(
+                    // TODO: don't assume it's an i32 array
+                    self.context.i32_type(),
+                    elements_ptr,
+                    &[index.into_int_value()],
+                    "array_access",
+                )
+                .expect("Failed to build GEP")
+        };
+
+        // TODO: different types of arrays
+        // Assume it is an i32 array
+        let element_type = self.context.i32_type().as_basic_type_enum();
+        (
+            CartType::from(element_type).with_alloca(),
+            gep.as_basic_value_enum(),
+        )
     }
 }
