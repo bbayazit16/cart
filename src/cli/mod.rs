@@ -6,7 +6,7 @@ pub(crate) use opt_level::OptimizationLevel;
 use std::path::PathBuf;
 
 #[derive(clap::Parser, Debug)]
-#[command(name = "cart", about = "Just a compiler.")]
+#[command(name = "cart", about = "The Cart compiler.")]
 pub(crate) struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -19,6 +19,9 @@ pub(crate) struct CommonOptions {
 
     #[arg(short, long, value_name = "OUTPUT", help = "The output file name")]
     pub output: Option<String>,
+
+    #[arg(long, help = "Time compilation")]
+    pub time_compilation: bool,
 
     #[arg(
         long,

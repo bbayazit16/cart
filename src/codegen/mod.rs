@@ -15,7 +15,9 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::BasicType;
 use inkwell::values::PointerValue;
+use inkwell::AddressSpace;
 
+mod cart_string;
 mod cart_type;
 pub(crate) mod compiler;
 mod declarations;
@@ -65,8 +67,15 @@ impl<'ctx> CodeGen<'ctx> {
         module.add_function(
             "println",
             context
-                .i32_type()
+                .void_type()
                 .fn_type(&[context.i32_type().into()], false),
+            None,
+        );
+        module.add_function(
+            "print_string",
+            context
+                .void_type()
+                .fn_type(&[context.ptr_type(AddressSpace::default()).into()], false),
             None,
         );
     }

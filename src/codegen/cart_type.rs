@@ -1,3 +1,4 @@
+use inkwell::context::Context;
 use inkwell::types::BasicTypeEnum;
 
 /// `CartType` wraps around Inkwell `BasicTypeEnum` and allows extra information
@@ -9,11 +10,14 @@ use inkwell::types::BasicTypeEnum;
 /// - `type_enum`: The `BasicTypeEnum` that the `CartType` wraps around.
 /// - `type_name`: An optional `String` that represents the name of the type.
 /// - `is_alloca`: A `bool` that represents whether the type is an alloca.
+/// - `is_void`: A `bool` that represents whether the type is a void type.
 #[derive(Debug, Clone)]
 pub(super) struct CartType<'ctx> {
     pub type_enum: BasicTypeEnum<'ctx>,
     pub type_name: Option<String>,
     pub is_alloca: bool,
+    #[allow(unused)]
+    pub is_void: bool,
 }
 
 impl<'ctx> CartType<'ctx> {
@@ -24,6 +28,7 @@ impl<'ctx> CartType<'ctx> {
             type_enum,
             type_name: Some(type_name),
             is_alloca,
+            is_void: false,
         }
     }
 
@@ -57,6 +62,17 @@ impl<'ctx> CartType<'ctx> {
         self.is_alloca = false;
         self
     }
+
+    /// Get a `CartType` that represents a void type.
+    pub(super) fn void(context: &'ctx Context) -> Self {
+        // Void type is temporarily represented as an i1 bool type, false.
+        Self {
+            type_enum: context.bool_type().into(),
+            type_name: None,
+            is_alloca: false,
+            is_void: true,
+        }
+    }
 }
 
 impl<'ctx> From<CartType<'ctx>> for BasicTypeEnum<'ctx> {
@@ -71,6 +87,7 @@ impl<'ctx> From<BasicTypeEnum<'ctx>> for CartType<'ctx> {
             type_enum: basic_type_enum,
             type_name: None,
             is_alloca: false,
+            is_void: false,
         }
     }
 }

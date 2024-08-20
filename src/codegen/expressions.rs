@@ -1,12 +1,13 @@
 use crate::ast::{Block, CallExpr, Expr, IfExpr, Literal, StructAccessExpr, StructLiteral};
+use crate::codegen::cart_string::CartString;
 use crate::codegen::cart_type::CartType;
 use crate::codegen::symbol_table::Variable;
 use crate::codegen::CodeGen;
 use crate::token::Token;
 use crate::token_value;
 use inkwell::types::{BasicType, BasicTypeEnum};
-use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, IntValue};
-use inkwell::IntPredicate;
+use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, IntValue, PointerValue};
+use inkwell::{AddressSpace, IntPredicate};
 
 impl<'ctx> CodeGen<'ctx> {
     /// Generates the LLVM IR for an expression.
@@ -80,7 +81,7 @@ impl<'ctx> CodeGen<'ctx> {
         literal: &Literal,
     ) -> Option<(CartType<'ctx>, BasicValueEnum<'ctx>)> {
         match literal {
-            Literal::Number(token) => {
+            Literal::Number(ref token) => {
                 let value = token_value!(token).parse::<i32>().unwrap();
                 let value = self
                     .context
@@ -91,6 +92,16 @@ impl<'ctx> CodeGen<'ctx> {
                     BasicTypeEnum::IntType(self.context.i32_type()).into(),
                     value,
                 ))
+            }
+            Literal::String(ref token) => {
+                let value = token_value!(token).to_string();
+                let string_ptr: PointerValue<'ctx> =
+                    CartString::from_string(self.context, &self.builder, &value);
+                let bte =
+                    BasicTypeEnum::PointerType(self.context.ptr_type(AddressSpace::default()));
+                // CartType is not marked as alloca, because Strings are passed around by reference
+                // by default.
+                Some((bte.into(), string_ptr.as_basic_value_enum()))
             }
             _ => unimplemented!("Other literal types"),
         }
@@ -194,15 +205,17 @@ impl<'ctx> CodeGen<'ctx> {
     fn generate_variable(&self, token: &Token) -> (CartType<'ctx>, BasicValueEnum<'ctx>) {
         let name = token_value!(token);
         if let Some(function) = self.module.get_function(&name) {
-            (
-                function
-                    .get_type()
-                    .get_return_type()
-                    .unwrap()
-                    .as_basic_type_enum()
-                    .into(),
-                function.as_global_value().as_basic_value_enum(),
-            )
+            let return_type = function.get_type().get_return_type();
+            match return_type {
+                Some(return_type) => (
+                    return_type.as_basic_type_enum().into(),
+                    function.as_global_value().as_basic_value_enum(),
+                ),
+                None => (
+                    CartType::void(self.context),
+                    function.as_global_value().as_basic_value_enum(),
+                ),
+            }
         } else if let Some(variable) = self.symbol_table.get_variable(&name) {
             match variable {
                 Variable::Immutable(pointee_type, pointer_value)

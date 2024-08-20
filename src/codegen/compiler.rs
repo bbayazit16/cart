@@ -95,6 +95,8 @@ fn link_object_file(object_file: &PathBuf, output_executable: &PathBuf) {
         .expect("Failed to execute linker");
 
     if !status.success() {
+        std::fs::remove_file(output_executable)
+            .expect("Linking failed and failed to remove object file");
         panic!("Linking failed");
     }
 
@@ -109,13 +111,8 @@ fn run_executable(executable: &PathBuf) {
         std::env::current_dir().unwrap().join(executable)
     };
 
-    let status = std::process::Command::new(&executable_path)
+    std::process::Command::new(&executable_path)
         .current_dir(std::env::current_dir().unwrap())
         .status()
         .expect("Failed to execute program");
-
-    println!(
-        "Program finished with exit code: {}",
-        status.code().unwrap()
-    );
 }

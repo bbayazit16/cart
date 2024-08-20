@@ -8,7 +8,6 @@ use crate::parser::Parser;
 use clap::Parser as ClapParser;
 
 mod ast;
-mod cart_std;
 mod cli;
 mod codegen;
 mod context;
@@ -40,10 +39,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let start = std::time::Instant::now();
             let mut program = Parser::new(context).parse();
             let end = std::time::Instant::now();
-            println!(
-                "Parsing complete in {}µ",
-                end.duration_since(start).as_micros()
-            );
+
+            if options.time_compilation {
+                println!(
+                    "Parsing complete in {}µ",
+                    end.duration_since(start).as_micros()
+                );
+            }
 
             let start = std::time::Instant::now();
             compile(
@@ -52,10 +54,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 options,
             );
             let end = std::time::Instant::now();
-            println!(
-                "Compilation complete in {}ms",
-                end.duration_since(start).as_millis()
-            );
+
+            if options.time_compilation {
+                println!(
+                    "Compilation complete in {}ms",
+                    end.duration_since(start).as_millis()
+                );
+            }
         }
     }
 
