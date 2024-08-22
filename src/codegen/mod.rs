@@ -9,7 +9,7 @@
 //! The symbol table is used to store variables and their values.
 
 use crate::ast::Program;
-use crate::codegen::symbol_table::SymbolTable;
+use crate::codegen::symbol_table::{SymbolTable, Variable};
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
@@ -23,8 +23,7 @@ pub(crate) mod compiler;
 mod declarations;
 mod expressions;
 mod statements;
-mod symbol_table;
-mod type_check;
+pub(crate) mod symbol_table;
 mod types;
 
 /// Codegen struct is responsible for generating LLVM IR from the AST.
@@ -36,7 +35,7 @@ pub(crate) struct CodeGen<'ctx> {
     context: &'ctx Context,
     module: Module<'ctx>,
     builder: Builder<'ctx>,
-    symbol_table: SymbolTable<'ctx>,
+    symbol_table: SymbolTable<Variable<'ctx>>,
 }
 
 impl<'ctx> CodeGen<'ctx> {

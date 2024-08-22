@@ -12,6 +12,7 @@ mod cli;
 mod codegen;
 mod context;
 mod errors;
+mod hir;
 mod parser;
 mod reporter;
 
@@ -39,13 +40,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let start = std::time::Instant::now();
             let mut program = Parser::new(context).parse();
             let end = std::time::Instant::now();
-            
+
             if options.time_compilation {
                 println!(
                     "Parsing complete in {}µ",
                     end.duration_since(start).as_micros()
                 );
             }
+            
+            let reporter = reporter::Reporter::new(&options.input);
+            let hir = hir::TypeChecker::new(reporter).resolve_types(&mut program);
+            dbg!(&hir);
+            
+            // std::process::exit(0);
 
             let start = std::time::Instant::now();
             compile(

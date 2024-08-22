@@ -117,8 +117,12 @@ macro_rules! token_value {
         match $ident {
             $crate::token::Token::Identifier(_, s) => s.to_string(),
             $crate::token::Token::Number(_, s, _) => s.to_string(),
+            $crate::token::Token::True(_) => "true".to_string(),
+            $crate::token::Token::False(_) => "false".to_string(),
             $crate::token::Token::String(_, s) => s.to_string(),
             $crate::token::Token::Self_(_) => "self".to_string(),
+            // TODO: Replace this entire macro.
+            $crate::token::Token::Plus(_) => "+".to_string(),
             _ => panic!("Must be an identifier"),
         }
     };

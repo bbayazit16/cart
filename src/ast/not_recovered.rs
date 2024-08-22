@@ -72,11 +72,11 @@ impl NotRecovered for UnaryExpr {
 
 impl NotRecovered for Literal {
     fn not_recovered() -> Self {
-        Literal::None
+        Literal::NotRecovered
     }
 
     fn is_not_recovered(&self) -> bool {
-        matches!(self, Literal::None)
+        matches!(self, Literal::NotRecovered)
     }
 }
 
@@ -96,7 +96,7 @@ impl NotRecovered for AssignmentExpr {
 impl NotRecovered for CallExpr {
     fn not_recovered() -> Self {
         CallExpr {
-            callee: Expr::not_recovered(),
+            callee: Token::not_recovered(),
             arguments: vec![Expr::not_recovered()],
         }
     }

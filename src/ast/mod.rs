@@ -24,7 +24,7 @@ pub(crate) enum Expr {
     Unary(Box<UnaryExpr>),
     Literal(Literal),
     #[allow(unused)]
-    Variable(Token, Option<Type>),
+    Variable(Token),
     #[allow(unused)]
     Assignment(Box<AssignmentExpr>),
     Call(Box<CallExpr>),
@@ -94,12 +94,12 @@ pub(crate) struct UnaryExpr {
 
 #[derive(Debug, Clone)]
 pub(crate) enum Literal {
-    Number(Token),
+    Integer(Token),
+    Float(Token),
     String(Token),
-    #[allow(unused)]
     Bool(Token),
     #[allow(unused)]
-    None,
+    NotRecovered,
 }
 
 #[derive(Debug, Clone)]
@@ -110,7 +110,8 @@ pub(crate) struct AssignmentExpr {
 
 #[derive(Debug, Clone)]
 pub(crate) struct CallExpr {
-    pub callee: Expr,
+    // TODO: Maybe? implement callee as an expr
+    pub callee: Token,
     pub arguments: Vec<Expr>,
 }
 
@@ -307,8 +308,6 @@ pub(crate) enum Type {
     Empty,
     #[allow(unused)]
     Generic(Token, Vec<Type>),
-    #[allow(unused)]
-    GenericDecl(Vec<Type>),
     #[allow(unused)]
     NotRecovered,
 }

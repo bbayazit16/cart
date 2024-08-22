@@ -11,7 +11,7 @@ impl Parser {
 
     // assignment     → ( ( ifExpr "." ) | ( matchExpr "." ) | ( call "." ) )?
     //                  IDENTIFIER "=" expression
-    //                | ifExpr 
+    //                | ifExpr
     //                | arrayAccess "=" expression ;
     fn parse_assignment(&mut self) -> Result<ast::Expr, CompileError> {
         // Assume expr is an r-value
@@ -166,7 +166,7 @@ impl Parser {
         Ok(left)
     }
 
-    // factor         → unary ( ( "/" | "*" ) unary )* ;
+    // factor         → unary ( ( "/" | "*" | "%" ) unary )* ;
     fn parse_factor(&mut self) -> Result<ast::Expr, CompileError> {
         let mut left = self.parse_unary()?;
         while self.match_slash() || self.match_star() {
@@ -222,11 +222,16 @@ impl Parser {
                     object: struct_access.object,
                     fields: struct_access.fields,
                     method_name,
-                    arguments
+                    arguments,
                 })))
             } else {
+                // TODO: non-ident calls?
+                let callee_name = match &callee {
+                    ast::Expr::Variable(ident) => ident.clone(),
+                    _ => unimplemented!("Only identifiers can be called")
+                };
                 Ok(ast::Expr::Call(Box::new(ast::CallExpr {
-                    callee,
+                    callee: callee_name,
                     arguments,
                 })))
             }
@@ -247,7 +252,18 @@ impl Parser {
             Ok(ast::Expr::Literal(ast::Literal::Bool(self.advance())))
         } else if self.match_number() {
             // NUMBER
-            Ok(ast::Expr::Literal(ast::Literal::Number(self.advance())))
+            let number = self.advance();
+            let is_float = match number {
+                crate::token::Token::Number(_, _, is_float) => is_float,
+                _ => unreachable!(),
+            };
+
+            if is_float {
+                Ok(ast::Expr::Literal(ast::Literal::Float(number)))
+            } else {
+                Ok(ast::Expr::Literal(ast::Literal::Integer(number)))
+            }
+            // Ok(ast::Expr::Literal(ast::Literal::Number(self.advance())))
         } else if self.match_string() {
             // STRING
             Ok(ast::Expr::Literal(ast::Literal::String(self.advance())))
@@ -291,7 +307,7 @@ impl Parser {
                         // as a struct.
                         self.recover_to_position(ident_position)?;
                         let ident = self.advance();
-                        Ok(ast::Expr::Variable(ident, None))
+                        Ok(ast::Expr::Variable(ident))
                     }
                 }
             } else if self.match_dot() {
@@ -300,19 +316,19 @@ impl Parser {
                 // TODO: Handle expr properly
                 // IDENTIFIER ( "." IDENTIFIER )+
                 Ok(ast::Expr::StructAccess(Box::new(
-                    self.partial_parse_struct_access(ast::Expr::Variable(ident, None))?,
+                    self.partial_parse_struct_access(ast::Expr::Variable(ident))?,
                 )))
             } else if self.match_lbracket() {
                 // arrayAccess
                 // TODO: allow for arrayAccess to be a part of a larger expression
                 let index = self.partial_parse_array_access()?;
                 Ok(ast::Expr::ArrayAccess(Box::new(ast::ArrayAccessExpr {
-                    array: ast::Expr::Variable(ident, None),
+                    array: ast::Expr::Variable(ident),
                     index,
                 })))
             } else {
                 // IDENTIFIER
-                Ok(ast::Expr::Variable(ident, None))
+                Ok(ast::Expr::Variable(ident))
             }
         }
     }

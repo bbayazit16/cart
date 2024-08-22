@@ -108,7 +108,7 @@ impl<'ctx> CodeGen<'ctx> {
             })
             .collect();
 
-        self.symbol_table.add_variable(
+        self.symbol_table.add(
             token_value!(&struct_decl.name),
             Variable::StructDecl(struct_type, fields_to_indices_and_types),
         );
@@ -119,7 +119,7 @@ impl<'ctx> CodeGen<'ctx> {
     fn generate_extension(&mut self, extension_decl: &crate::ast::ExtensionDecl) {
         // TODO: Generics
         let struct_name = token_value!(&extension_decl.name);
-        let struct_type = match self.symbol_table.get_variable(&struct_name).unwrap() {
+        let struct_type = match self.symbol_table.get(&struct_name).unwrap() {
             Variable::StructDecl(struct_type, _) => struct_type.as_basic_type_enum(),
             _ => panic!("Expected struct type"),
         };

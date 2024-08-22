@@ -51,10 +51,10 @@ impl<'ctx> CodeGen<'ctx> {
         variables: Vec<(String, Variable<'ctx>)>,
     ) -> Option<(CartType<'ctx>, BasicValueEnum<'ctx>)> {
         {
-            self.symbol_table.start_scope();
+            self.symbol_table.begin_scope();
 
             for (name, variable) in variables {
-                self.symbol_table.add_variable(name, variable);
+                self.symbol_table.add(name, variable);
             }
 
             for declaration in block.declarations.iter() {
@@ -91,7 +91,7 @@ impl<'ctx> CodeGen<'ctx> {
         literal: &Literal,
     ) -> Option<(CartType<'ctx>, BasicValueEnum<'ctx>)> {
         match literal {
-            Literal::Number(ref token) => {
+            Literal::Integer(ref token) => {
                 let value = token_value!(token).parse::<i32>().unwrap();
                 let value = self
                     .context
@@ -226,7 +226,7 @@ impl<'ctx> CodeGen<'ctx> {
                     function.as_global_value().as_basic_value_enum(),
                 ),
             }
-        } else if let Some(variable) = self.symbol_table.get_variable(&name) {
+        } else if let Some(variable) = self.symbol_table.get(&name) {
             match variable {
                 Variable::Immutable(pointee_type, pointer_value)
                 | Variable::Mutable(pointee_type, pointer_value) => (
@@ -246,21 +246,28 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         call_expr: &CallExpr,
     ) -> Option<(CartType<'ctx>, BasicValueEnum<'ctx>)> {
-        let (_, callee_expr) = self
-            .generate_expression(&call_expr.callee)
-            .expect("Callee expression not found");
-
+        // Temporarily disabled!
+        //
+        // let (_, callee_expr) = self
+        //     .generate_expression(&call_expr.callee)
+        //     .expect("Callee expression not found");
+        //
         // callee_expr.get_name();
         // Returns variable name ^
-        let callee = self
+        // let callee = self
+        //     .module
+        //     .get_function(callee_expr.get_name().to_str().unwrap())
+        //     .expect("Callee function not found");
+        let function_name = token_value!(&call_expr.callee);
+        let callee  = self
             .module
-            .get_function(callee_expr.get_name().to_str().unwrap())
+            .get_function(&function_name)
             .expect("Callee function not found");
-
+        
         if callee.count_params() != call_expr.arguments.len() as u32 {
             panic!("Incorrect # of arguments")
         }
-
+        
         let args: Vec<BasicMetadataValueEnum> = call_expr
             .arguments
             .iter()
@@ -284,12 +291,12 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             })
             .collect();
-
+        
         let call_site = self
             .builder
             .build_call(callee, &args, "call")
             .expect("Failed to build call");
-
+        
         if let Some(return_type) = callee.get_type().get_return_type() {
             let return_type = return_type.as_basic_type_enum().into();
             let return_value = call_site
@@ -373,7 +380,7 @@ impl<'ctx> CodeGen<'ctx> {
             // TODO: Try to remove clone...
             let variable = self
                 .symbol_table
-                .get_variable(&struct_literal_name)
+                .get(&struct_literal_name)
                 .expect("Unknown struct")
                 .clone();
             match variable {
@@ -439,7 +446,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let (index, field_type) = match self
             .symbol_table
-            .get_variable(struct_object_name)
+            .get(struct_object_name)
             .expect("Can't retrieve variable")
         {
             Variable::StructDecl(_, field_to_index) => {

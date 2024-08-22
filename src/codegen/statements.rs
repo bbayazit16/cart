@@ -37,6 +37,6 @@ impl<'ctx> CodeGen<'ctx> {
             Variable::Immutable(value_type, alloca)
         };
 
-        self.symbol_table.add_variable(name, variable);
+        self.symbol_table.add(name, variable);
     }
 }
