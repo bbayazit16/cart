@@ -21,16 +21,8 @@ impl Parser {
                     self.recover_to_position(declaration_start)?;
                     return_expr = Some(self.parse_expr()?);
                     break;
-                    //     self.errors.push(e);
-                    //     dbg!(self.peek().unwrap());
-                    //     // ast::NotRecovered::not_recovered()
-                    //     // self.recover_to_position(declaration_start)?;
-                    //     self.synchronize();
-                    //     dbg!(self.peek().unwrap());
-                    //     break;
                 }
             }
-            // declarations.push(self.parse_declaration()?);
         }
 
         self.consume_rbrace()?;

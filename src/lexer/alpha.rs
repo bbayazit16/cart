@@ -286,7 +286,6 @@ impl Lexer {
         // or space. If the next character is a number, then there is something wrong.
         if let Some(c) = self.peek() {
             if c.is_alphanumeric() {
-                dbg!("error occurring");
                 let e = CompileError::Syntax(SyntaxError::InvalidNumberLiteral {
                     file_pointer: self.file_pointer,
                     literal: self
@@ -341,7 +340,12 @@ impl Lexer {
 
     /// Lex a string. Return a CompileError if any error has occurred.
     pub(super) fn string(&mut self) -> Token {
-        let start = self.file_pointer;
+        // 1 subtracted as the current character " is already consumed
+        let start = FilePointer {
+            file_position: self.file_pointer.file_position - 1,
+            line_position: self.file_pointer.line_position - 1,
+            ..self.file_pointer
+        };
         let mut value = String::new();
         let mut has_advanced_once = false;
         while let Some(c) = self.advance() {
@@ -394,10 +398,7 @@ impl Lexer {
         }
 
         Token::String(
-            FilePointer {
-                file_position: start.file_position,
-                ..self.file_pointer
-            },
+            start,
             value,
         )
     }
