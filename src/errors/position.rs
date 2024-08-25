@@ -38,6 +38,26 @@ impl Position for TypeError {
                 file_pointer: file_position,
                 ..
             } => *file_position,
+            TypeError::UndefinedVariable {
+                file_pointer: file_position,
+                ..
+            } => *file_position,
+            TypeError::UndefinedFunction {
+                file_pointer: file_position,
+                ..
+            } => *file_position,
+            TypeError::IndexingNonArray {
+                file_pointer: file_position,
+                ..
+            } => *file_position,
+            TypeError::BinaryOpError {
+                file_pointer: file_position,
+                ..
+            } => *file_position,
+            TypeError::UnitAssignment {
+                file_pointer: file_position,
+                ..
+            } => *file_position,
         }
     }
 }

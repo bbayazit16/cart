@@ -1,4 +1,4 @@
-use crate::errors::SyntaxError;
+use crate::errors::{SyntaxError, TypeError};
 
 /// The `help` trait is implemented for certain error types. If the `help` trait
 /// is implemented, then the reporter will accordingly print the help messages.
@@ -17,6 +17,17 @@ impl Help for SyntaxError {
             }
             SyntaxError::InvalidNumberLiteral { .. } => {
                 Some("Valid bases are: 16 ('x'), 10, 8 ('o'), 2 ('b')".into())
+            }
+            _ => None,
+        }
+    }
+}
+
+impl Help for TypeError {
+    fn help_message(&self) -> Option<String> {
+        match self {
+            TypeError::IndexingNonArray { .. } => {
+                Some("Only array types can be indexed with []".into())
             }
             _ => None,
         }

@@ -63,7 +63,11 @@ impl Reporter {
     /// Reports a Type Error to stderr.
     /// Forwards the message to `print_error`.
     fn report_type_error(&self, error: &TypeError) {
-        self.print_error(error.to_string(), error.file_position(), None)
+        self.print_error(
+            error.to_string(),
+            error.file_position(),
+            error.help_message(),
+        )
     }
 
     /// Reports an IO Error to stderr.
@@ -130,7 +134,7 @@ impl Reporter {
             "  --> {}:{}:{}",
             self.file_path.display(),
             file_pointer.line,
-            file_pointer.file_position
+            file_pointer.line_position
         );
         eprintln!();
     }

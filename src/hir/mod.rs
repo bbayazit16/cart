@@ -11,13 +11,18 @@ use crate::codegen::symbol_table::{SymbolSet, SymbolTable};
 use crate::errors::CompileError;
 use crate::reporter::Reporter;
 use std::collections::HashMap;
+use crate::hir::hir_type::Type;
 
 mod type_check;
+mod errors;
+mod display;
+mod hir_type;
+
+pub(crate) use hir_type::*;
 
 /// TypeChecker struct resolves variable types, generics, and scoped variables,
 /// and assigns them to the AST nodes. If an error occurs, the TypeChecker
 /// reports to the reporter.
-#[allow(unused)]
 pub(crate) struct TypeChecker {
     reporter: Reporter,
     errors: Vec<CompileError>,
@@ -67,138 +72,6 @@ impl TypeChecker {
 #[derive(Debug, Clone)]
 pub(crate) struct Program {
     pub(crate) declarations: Vec<Declaration>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) enum Type {
-    Int,
-    Int64,
-    Int128,
-    Int256,
-    Float,
-    Bool,
-    String,
-    Unit,
-    Array(Box<Type>),
-    Struct(String),
-    Enum(String),
-    Error(String),
-    // A generic like StructType<String, SomeType<OtherType>>
-    // is stored as (omitting the box):
-    // Generic(
-    //     Struct("StructType"),
-    //     [String, Generic(SomeType, [OtherType])]
-    // )
-    // It is guaranteed that the first element of the tuple is not a Generic.
-    Generic(Box<Type>, Vec<Type>),
-    // A generic type like <T> is stored as:
-    // DeclaredGenericType("T")
-    DeclaredGenericType(String),
-}
-
-#[derive(Debug, Copy, Clone)]
-pub(crate) enum UnaryOp {
-    Neg,
-    Not,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub(crate) enum BinaryOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Mod,
-    And,
-    Or,
-    Eq,
-    Neq,
-    Lt,
-    Gt,
-    Le,
-    Ge,
-}
-
-impl BinaryOp {
-    /// Given the left and right types, predict the resulting output type of the binary operation.
-    /// For now, only integer types, booleans, and strings are supported.
-    pub fn predict_output(&self, left: &Type, right: &Type) -> Type {
-        // TODO: Support more types
-        // TODO: Graceful error handling
-        match self {
-            BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod => {
-                // String concatenation supports + operator
-                if left == &Type::String && right == &Type::String && self == &BinaryOp::Add {
-                    Type::String
-                } else if left == &Type::Int && right == &Type::Int {
-                    Type::Int
-                } else if left == &Type::Int64 && right == &Type::Int64 {
-                    Type::Int64
-                } else if left == &Type::Int128 && right == &Type::Int128 {
-                    Type::Int128
-                } else if left == &Type::Int256 && right == &Type::Int256 {
-                    Type::Int256
-                } else if left == &Type::Float && right == &Type::Float {
-                    Type::Float
-                } else {
-                    panic!("Invalid types for binary operation");
-                }
-            }
-            BinaryOp::And | BinaryOp::Or => {
-                if left == &Type::Bool && right == &Type::Bool {
-                    Type::Bool
-                } else {
-                    panic!("Invalid types for binary operation");
-                }
-            }
-            BinaryOp::Eq
-            | BinaryOp::Neq
-            | BinaryOp::Lt
-            | BinaryOp::Gt
-            | BinaryOp::Le
-            | BinaryOp::Ge => {
-                if left == right {
-                    Type::Bool
-                } else {
-                    panic!("Invalid types for binary operation");
-                }
-            }
-        }
-    }
-}
-
-impl From<&str> for BinaryOp {
-    // TODO: Better error handling
-    fn from(op: &str) -> Self {
-        match op {
-            "+" => BinaryOp::Add,
-            "-" => BinaryOp::Sub,
-            "*" => BinaryOp::Mul,
-            "/" => BinaryOp::Div,
-            // TODO: Add exponentiation
-            "%" => BinaryOp::Mod,
-            "&&" => BinaryOp::And,
-            "||" => BinaryOp::Or,
-            "==" => BinaryOp::Eq,
-            "!=" => BinaryOp::Neq,
-            "<" => BinaryOp::Lt,
-            ">" => BinaryOp::Gt,
-            "<=" => BinaryOp::Le,
-            ">=" => BinaryOp::Ge,
-            other => unimplemented!("Unsupported binary operator: {}", other),
-        }
-    }
-}
-
-impl From<&str> for UnaryOp {
-    // TODO: Better error handling
-    fn from(op: &str) -> Self {
-        match op {
-            "-" => UnaryOp::Neg,
-            "!" => UnaryOp::Not,
-            other => unimplemented!("Unsupported unary operator: {}", other),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

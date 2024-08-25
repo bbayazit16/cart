@@ -57,7 +57,7 @@ impl<T> SymbolTable<T> {
             .rev()
             .find_map(|scope| scope.get(name))
     }
-    
+
     /// Get a mutable reference from the symbol table.
     /// The function looks at scopes from the current scope to outer scopes,
     /// in order. If the variable is found, it returns the variable.

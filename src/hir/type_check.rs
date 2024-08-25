@@ -1,3 +1,5 @@
+use crate::context::FilePointer;
+use crate::errors::TypeError;
 use crate::hir::{Type, TypeChecker};
 use crate::token::Token;
 use crate::{ast, hir, token_value};
@@ -15,7 +17,7 @@ fn determine_bit_size(_number_str: &str) -> Type {
 
 impl<'a> TypeChecker {
     /// Resolve the types of the AST nodes.
-    pub(crate) fn resolve_types(&mut self, ast: &'a mut ast::Program) -> hir::Program {
+    pub(crate) fn resolve_types(&mut self, ast: &'a ast::Program) -> hir::Program {
         for declaration in &ast.declarations {
             if let ast::Declaration::FunctionDecl(ref function_decl) = declaration {
                 let function_signature = self.resolve_function_signature(function_decl);
@@ -30,6 +32,10 @@ impl<'a> TypeChecker {
         let mut declarations = Vec::new();
         for declaration in ast.declarations.iter() {
             declarations.push(self.resolve_declaration(declaration));
+        }
+
+        for error in self.errors.iter() {
+            self.reporter.report(error);
         }
 
         hir::Program { declarations }
@@ -119,8 +125,13 @@ impl<'a> TypeChecker {
         let body = self.resolve_block(&function_decl.body, Some(&function_decl.params));
         self.types.end_scope();
 
-        // TODO: Better error handling
-        assert_eq!(body.return_type, signature.return_type);
+        if body.return_type != signature.return_type {
+            self.report_type_error(
+                &signature.return_type,
+                &body.return_type,
+                function_decl.name.get_file_pointer(),
+            );
+        }
 
         hir::Function { signature, body }
     }
@@ -213,11 +224,13 @@ impl<'a> TypeChecker {
             // TODO: Check this approach?
             let generics_call = original_generics
                 .iter()
-                .map(|t| Type::DeclaredGenericType(t.clone()))
+                .map(|t| Type::DeclaredGeneric(t.clone()))
                 .collect::<Vec<Type>>();
             let signatures_match = Self::verify_fn_call_types(&generics_call, &generics);
-            // TODO: better err handling
-            assert!(signatures_match, "Struct extension mismatch");
+
+            if let Some((expected, found)) = signatures_match.err() {
+                self.report_type_error(expected, found, extension_decl.name.get_file_pointer());
+            }
 
             generics
         } else {
@@ -311,10 +324,20 @@ impl<'a> TypeChecker {
         let value = self.resolve_expr(&let_stmt.expr);
         let ty = value.resulting_type();
 
+        if ty == Type::Unit {
+            // Unit types cannot be assigned to anything.
+            self.report_unit_assignment(let_stmt.name.get_file_pointer());
+        }
+
         if let Some(set_type) = &let_stmt.set_type {
             let set_type = self.resolve_type(set_type);
 
-            assert_eq!(ty, set_type, "Type mismatch in let statement");
+            if set_type == Type::Unit {
+                // Unit types cannot be assigned to anything.
+                self.report_type_error(&set_type, &ty, let_stmt.name.get_file_pointer());
+            } else if ty != set_type && !ty.can_be_cast_to(&set_type) {
+                self.report_type_error(&set_type, &ty, let_stmt.name.get_file_pointer());
+            }
         }
 
         self.types.add(name.to_string(), (ty.clone(), is_mut));
@@ -398,8 +421,13 @@ impl<'a> TypeChecker {
                 ty: ty.clone(),
             }
         } else {
-            // TODO: Better error handling
-            unimplemented!("Variable not found: {}", variable_name);
+            self.report_undefined_variable(variable_name.clone(), var.get_file_pointer());
+            // TODO: Check this approach
+            hir::Expression::Variable {
+                name: variable_name,
+                is_mut: false,
+                ty: Type::Unit,
+            }
         }
     }
 
@@ -415,7 +443,24 @@ impl<'a> TypeChecker {
             unimplemented!("Empty arrays are not yet supported.");
         }
 
-        // TODO: Assure all elements have the same type.
+        // Now, assure all elements have the same type.
+        let first_element_type = resolved_elements[0].resulting_type();
+        for element in resolved_elements.iter() {
+            let found = element.resulting_type();
+            if found != first_element_type {
+                // Expected first element type, but found another.
+                // TODO: Acquire file pointer correctly
+                self.report_type_error(
+                    &first_element_type,
+                    &found,
+                    FilePointer {
+                        file_position: 0,
+                        line_position: 0,
+                        line: 0,
+                    },
+                );
+            }
+        }
 
         let element_type = resolved_elements[0].resulting_type();
         let array_type = Type::Array(Box::new(element_type.clone()));
@@ -432,7 +477,18 @@ impl<'a> TypeChecker {
         let array = self.resolve_expr(&array_access.array);
         let element_type = match &array.resulting_type() {
             Type::Array(t) => *t.clone(),
-            e => panic!("Array access on non-array type {:?}", e), // TODO: better error handling
+            e => {
+                // TODO: Acquire file pointer correctly
+                self.report_indexing_non_array(
+                    e.to_string(),
+                    FilePointer {
+                        file_position: 0,
+                        line_position: 0,
+                        line: 0,
+                    },
+                );
+                Type::Unit
+            }
         };
 
         let index = self.resolve_expr(&array_access.index);
@@ -455,7 +511,18 @@ impl<'a> TypeChecker {
 
         let left_type = left.resulting_type();
         let right_type = right.resulting_type();
-        let resulting_type = op.predict_output(&left_type, &right_type);
+        let resulting_type = match op.predict_output(&left_type, &right_type) {
+            Some(t) => t,
+            None => {
+                self.report_binary_op_error(
+                    &op,
+                    &left_type,
+                    &right_type,
+                    binary_expr.operator.get_file_pointer(),
+                );
+                Type::Unit
+            }
+        };
 
         hir::Expression::Binary {
             left: Box::new(left),
@@ -494,18 +561,49 @@ impl<'a> TypeChecker {
             .map(|arg| arg.resulting_type())
             .collect::<Vec<Type>>();
 
-        let function_signature = self.functions.get(&callee).expect("Function not found");
-
-        dbg!(&function_signature.params, &arg_types);
-        let signatures_match = Self::verify_fn_call_types(&function_signature.params, &arg_types);
-
-        // TODO: Better error handling
-        assert!(signatures_match, "Function signature mismatch");
+        // let function_signature = self.functions.get(&callee).expect("Function not found").clone();
+        //
+        // let signatures_match = Self::verify_fn_call_types(&function_signature.params, &arg_types);
+        // if let Some((expected, found)) = signatures_match.err() {
+        //     let fp = call_expr.callee.get_file_pointer();
+        //     self.report_type_error(expected, found, fp);
+        // }
+        let function_signature = match self.functions.get(&callee) {
+            Some(signature) => {
+                let signatures_match = Self::verify_fn_call_types(&signature.params, &arg_types);
+                if let Some((expected, found)) = signatures_match.err() {
+                    let fp = call_expr.callee.get_file_pointer();
+                    self.errors.push(
+                        TypeError::IncorrectType {
+                            expected: expected.to_string(),
+                            incorrect: found.to_string(),
+                            file_pointer: fp,
+                        }
+                        .into(),
+                    );
+                }
+                signature.clone()
+            }
+            None => {
+                self.report_undefined_function(
+                    callee.to_string(),
+                    call_expr.callee.get_file_pointer(),
+                );
+                // TODO: check
+                hir::FunctionSignature {
+                    name: callee.to_string(),
+                    params: vec![],
+                    return_type: Type::Unit,
+                    generic_declarations: vec![],
+                    is_self: false,
+                }
+            }
+        };
 
         hir::Expression::Call {
             callee,
             arguments,
-            return_type: function_signature.return_type.clone(),
+            return_type: function_signature.return_type,
         }
     }
 
@@ -528,8 +626,6 @@ impl<'a> TypeChecker {
 
         let object_name = Self::get_object_name(&object_ty);
 
-        dbg!(&object_name);
-
         // TODO: Better error handling
         let struct_exists = self.types.get(&object_name).is_some();
         if !struct_exists {
@@ -545,7 +641,7 @@ impl<'a> TypeChecker {
 
         let signatures_match = Self::verify_fn_call_types(&method_signature.params, &arg_types);
         // TODO: Better error handling
-        assert!(signatures_match, "Function signature mismatch");
+        assert!(signatures_match.is_ok(), "Function signature mismatch");
 
         hir::Expression::MethodCall {
             object: Box::new(object),
@@ -712,12 +808,13 @@ impl<'a> TypeChecker {
             "int128" => Type::Int128,
             "int256" => Type::Int256,
             "float" => Type::Float,
+            "float64" => Type::Float64,
             "bool" => Type::Bool,
             "string" => Type::String,
             "()" => Type::Unit,
             other => {
                 if self.generics_table.contains(&other.to_string()) {
-                    Type::DeclaredGenericType(other.to_string())
+                    Type::DeclaredGeneric(other.to_string())
                 } else if self.types.get(other).is_some() {
                     Type::Struct(other.to_string())
                 } else {
@@ -731,7 +828,7 @@ impl<'a> TypeChecker {
     fn get_object_name(object_ty: &Type) -> String {
         match object_ty {
             Type::Struct(ref name) => name.to_string(),
-            Type::Generic(..) | Type::DeclaredGenericType(..) => {
+            Type::Generic(..) | Type::DeclaredGeneric(..) => {
                 unimplemented!("Generics are not yet supported")
             }
             _ => unimplemented!("Method calls are only supported on structs"),
@@ -765,60 +862,96 @@ impl<'a> TypeChecker {
     /// For example, a function call foo(StructType<T>) can be verified against
     /// foo(StructType<Int>), including any nested generics.
     ///
+    /// If incorrect, return a tuple (expected, found) of the elements.
+    ///
     /// # Arguments
     /// - `arg_types`: The types of the arguments in the function signature.
     /// - `params`: The types of the parameters in the function call.
-    fn verify_fn_call_types(arg_types: &[Type], params: &[Type]) -> bool {
+    fn verify_fn_call_types(
+        arg_types: &'a [Type],
+        params: &'a [Type],
+    ) -> Result<(), (&'a Type, &'a Type)> {
         let mut generic_map: HashMap<&String, &Type> = HashMap::new();
-        let signatures_match = params.len() == arg_types.len()
-            && arg_types.iter().zip(params.iter()).all(|(a, b)| {
-                match a {
-                    Type::DeclaredGenericType(ref generic_typename) => {
-                        if let Some(t) = generic_map.get(generic_typename) {
-                            // The generic was previously registered in the generic map.
-                            // Check if the registered filled type matches the current type.
-                            *t == b
-                        } else {
-                            // Register the generic type in the generic map.
-                            generic_map.insert(generic_typename, b);
-                            true
+        if params.len() != arg_types.len() {
+            // Then, there are different number of arguments.
+            // The token causing the error is the next token on the longest slice.
+            return if arg_types.len() > params.len() {
+                // Original arguments are longer than the provided arguments.
+                // Then the expected type is the one in `arg_types`.
+                Err((&arg_types[params.len() - 1], &Type::Unit))
+            } else {
+                // Provided arguments are longer than they are supposed to be.
+                // Then the expected type is the one in `params`.
+                Err((&Type::Unit, &params[arg_types.len() - 1]))
+            };
+        }
+        let iterator = arg_types.iter().zip(params.iter());
+        for (a, b) in iterator {
+            match a {
+                Type::DeclaredGeneric(ref generic_typename) => {
+                    if let Some(t) = generic_map.get(generic_typename) {
+                        // The generic was previously registered in the generic map.
+                        // Check if the registered filled type matches the current type.
+                        if *t != b {
+                            // The types don't match. Get the previously registered generic type,
+                            // and substitute it with the current type.
+                            // TODO above ^^^
+                            return Err((a, b));
                         }
+                    } else {
+                        // Register the generic type in the generic map.
+                        generic_map.insert(generic_typename, b);
                     }
-                    // This match branch performs checks for types such as
-                    // StructType<T, OtherStruct<T>> (or more complex ones). It ensures
-                    // that the generic type T is filled with the correct type.
-                    // This is a recursive type, so we need to compare the types recursively.
-                    // In addition to the generic type checking, this match arm must also
-                    // verify that the non-generic types match. For example, for the type
-                    // StructType<T>, the StructType part must match.
-                    Type::Generic(ref generic_name, ref generic_parts) => {
-                        // Here, `generic_types` could be another generic type. That's why
-                        // this comparison is recursive.
-                        Self::recurse_into_generic_type(generic_name, generic_parts, b)
+                }
+                // This match branch performs checks for types such as
+                // StructType<T, OtherStruct<T>> (or more complex ones). It ensures
+                // that the generic type T is filled with the correct type.
+                // This is a recursive type, so we need to compare the types recursively.
+                // In addition to the generic type checking, this match arm must also
+                // verify that the non-generic types match. For example, for the type
+                // StructType<T>, the StructType part must match.
+                Type::Generic(ref generic_name, ref generic_parts) => {
+                    // Here, `generic_types` could be another generic type. That's why
+                    // this comparison is recursive.
+                    let is_correct =
+                        Self::recurse_into_generic_type(generic_name, generic_parts, b);
+                    if !is_correct {
+                        return Err((a, b));
                     }
-                    Type::Array(ref array_type) => {
-                        // Array types can be nested: For example,
-                        // Struct<T>[] is a valid type. Recursive type checking is required
-                        // to ensure that the types match.
-                        // Consider the example:
-                        // - Struct<T, Struct<T>>[] against Struct<Int, Struct<Int>>[]
-                        // 1) `array_type` is `Array(Struct(T, Struct(T)))`
-                        // 2) `b` is `Array(Struct(Int, Struct(Int)))`
-                        // (note for the algorithm: if `b` is not an array type, return false)
-                        // Then, we want to verify that the inner types, which are:
-                        // Struct(T, Struct(T)) match Struct(Int, Struct(Int))
-                        match b {
-                            Type::Array(ref array_type_b) => Self::verify_fn_call_types(
+                }
+                Type::Array(ref array_type) => {
+                    // Array types can be nested: For example,
+                    // Struct<T>[] is a valid type. Recursive type checking is required
+                    // to ensure that the types match.
+                    // Consider the example:
+                    // - Struct<T, Struct<T>>[] against Struct<Int, Struct<Int>>[]
+                    // 1) `array_type` is `Array(Struct(T, Struct(T)))`
+                    // 2) `b` is `Array(Struct(Int, Struct(Int)))`
+                    // (note for the algorithm: if `b` is not an array type, return false)
+                    // Then, we want to verify that the inner types, which are:
+                    // Struct(T, Struct(T)) match Struct(Int, Struct(Int))
+                    match b {
+                        Type::Array(ref array_type_b) => {
+                            Self::verify_fn_call_types(
                                 std::slice::from_ref(array_type),
                                 std::slice::from_ref(array_type_b),
-                            ),
-                            _ => false,
+                            )?;
+                        }
+                        _ => {
+                            return Err((a, b));
                         }
                     }
-                    _ => a == b, // Regular type comparison.
                 }
-            });
-        signatures_match
+                _ => {
+                    // Regular type comparison.
+                    if a != b {
+                        return Err((a, b));
+                    }
+                }
+            }
+        }
+        // No errors!
+        Ok(())
     }
 
     /// Verify that the generic types match.
@@ -852,14 +985,18 @@ impl<'a> TypeChecker {
     ///     pass them back into `verify_generic_placeholders` to verify that the types match.
     ///    - Self::verify_generic_placeholders(generic_parts, generic_parts_b)
     /// 4) Return the result of the call.
-    fn recurse_into_generic_type(generic_name: &Type, generic_parts: &[Type], b: &Type) -> bool {
+    fn recurse_into_generic_type(
+        generic_name: &Type,
+        generic_parts: &'a [Type],
+        b: &'a Type,
+    ) -> bool {
         match b {
             Type::Generic(ref generic_name_b, ref generic_parts_b) => {
                 if generic_name != generic_name_b.as_ref() {
                     return false;
                 }
 
-                Self::verify_fn_call_types(generic_parts, generic_parts_b)
+                Self::verify_fn_call_types(generic_parts, generic_parts_b).is_err()
             }
             _ => false,
         }

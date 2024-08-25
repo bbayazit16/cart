@@ -40,25 +40,49 @@ pub(crate) enum SyntaxError {
 
 #[derive(Error, Debug)]
 pub(crate) enum TypeError {
-    #[error("incorrect type '{incorrect}', expected '{expected}' at {file_pointer}")]
-    #[allow(dead_code)]
+    #[error("found type '{incorrect}', expected '{expected}' at {file_pointer}")]
     IncorrectType {
         file_pointer: FilePointer,
         incorrect: String,
         expected: String,
     },
-}
 
-#[derive(Error, Debug)]
-#[allow(unused)]
-pub(crate) enum ResolutionError {
     #[error("undefined variable '{variable}' at {file_pointer}")]
-    #[allow(dead_code)]
     UndefinedVariable {
         file_pointer: FilePointer,
         variable: String,
     },
+    
+    #[error("undefined function '{function}' at {file_pointer}")]
+    UndefinedFunction {
+        file_pointer: FilePointer,
+        function: String,
+    },
+
+    #[error("attempted to index type '{found_type}' at {file_pointer}")]
+    IndexingNonArray {
+        file_pointer: FilePointer,
+        found_type: String,
+    },
+
+    #[error("binary operation '{op}' between '{left}' and '{right}' at {file_pointer} are incompatible")]
+    BinaryOpError {
+        op: String,
+        left: String,
+        right: String,
+        file_pointer: FilePointer,
+    },
+    
+    #[error("unit type `()` assignments to variables are forbidden. Assignment found at {file_pointer}")]
+    UnitAssignment {
+        file_pointer: FilePointer,
+    },
 }
+
+// #[derive(Error, Debug)]
+// #[allow(unused)]
+// pub(crate) enum ResolutionError {
+// }
 
 #[derive(Error, Debug)]
 pub(crate) enum CompileError {

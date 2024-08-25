@@ -30,7 +30,7 @@ macro_rules! lexer_debug {
     };
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
     let cli = Cli::parse();
 
     match &cli.command {
@@ -47,11 +47,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     end.duration_since(start).as_micros()
                 );
             }
-            
+
             let reporter = reporter::Reporter::new(&options.input);
-            let hir = hir::TypeChecker::new(reporter).resolve_types(&mut program);
+            let hir = hir::TypeChecker::new(reporter).resolve_types(&program);
             dbg!(&hir);
-            
+
             // std::process::exit(0);
 
             let start = std::time::Instant::now();
@@ -70,6 +70,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-
-    Ok(())
 }

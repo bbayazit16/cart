@@ -1,5 +1,5 @@
 //! The Cart standard library is included with every Cart program.
-//! It is linked to the program at compile time.
+//! It is linked to the program after compilation.
 use crate::cart_array::CartArray;
 use va_list::VaList;
 
