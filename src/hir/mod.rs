@@ -38,13 +38,6 @@ impl TypeChecker {
     /// Create a new TypeChecker struct with the given reporter.
     pub(crate) fn new(reporter: Reporter) -> Self {
         let mut functions = SymbolTable::default();
-        //         module.add_function(
-        //     "print_number",
-        //     context
-        //         .void_type()
-        //         .fn_type(&[context.i32_type().into()], false),
-        //     None,
-        // );
         functions.add(
             "print_number".to_string(),
             FunctionSignature {

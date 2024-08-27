@@ -1,4 +1,4 @@
-use crate::context::FilePointer;
+use crate::context::Span;
 use crate::errors::TypeError;
 use crate::hir::{Type, TypeChecker};
 use crate::token::Token;
@@ -63,7 +63,7 @@ impl<'a> TypeChecker {
         &mut self,
         function_decl: &'a ast::FunctionDecl,
     ) -> hir::FunctionSignature {
-        let name = token_value!(&function_decl.name);
+        let name = token_value!(&function_decl.name, Identifier);
 
         for generic in function_decl.generic_params.iter() {
             self.add_ident_to_generics_table(generic);
@@ -129,7 +129,7 @@ impl<'a> TypeChecker {
             self.report_type_error(
                 &signature.return_type,
                 &body.return_type,
-                function_decl.name.get_file_pointer(),
+                function_decl.return_type.span(),
             );
         }
 
@@ -138,7 +138,7 @@ impl<'a> TypeChecker {
 
     /// Resolve the types of the given struct declaration.
     fn resolve_struct_decl(&mut self, struct_decl: &'a ast::StructDecl) -> hir::Declaration {
-        let name = token_value!(&struct_decl.name);
+        let name = token_value!(&struct_decl.name, Identifier);
 
         // Add struct to types BEFORE a generics type scope is started.
         self.types
@@ -192,9 +192,9 @@ impl<'a> TypeChecker {
     ) -> hir::Declaration {
         let struct_name = token_value!(&extension_decl.name);
         // Verify that the struct exists:
-        self.struct_fields
-            .get(&struct_name)
-            .expect("Struct not found");
+        if self.struct_fields.get(&struct_name).is_none() {
+            self.report_undefined_variable(struct_name.clone(), extension_decl.header_span);
+        }
 
         // Here, a scope is started because of struct generics. If a generic is defined for the
         // struct, it shouldn't be used for other structs.
@@ -215,10 +215,16 @@ impl<'a> TypeChecker {
                 .map(|t| self.resolve_type(t))
                 .collect::<Vec<Type>>();
 
-            let original_generics = self
-                .struct_generics
-                .get(&struct_name)
-                .expect("Struct generics not found");
+            let original_generics = self.struct_generics.get(&struct_name);
+
+            // Can't use and_then due to mutable borrows and closure requiring mutable borrow.
+            let original_generics = if let Some(original_generics) = original_generics {
+                original_generics
+            } else {
+                self.report_undefined_variable(struct_name.clone(), extension_decl.header_span);
+                &Vec::new()
+            };
+
             // Verify that original generics and extension generics match.
             // They could have different names, but they should be the same type.
             // TODO: Check this approach?
@@ -229,7 +235,7 @@ impl<'a> TypeChecker {
             let signatures_match = Self::verify_fn_call_types(&generics_call, &generics);
 
             if let Some((expected, found)) = signatures_match.err() {
-                self.report_type_error(expected, found, extension_decl.name.get_file_pointer());
+                self.report_type_error(expected, found, extension_decl.header_span);
             }
 
             generics
@@ -269,7 +275,7 @@ impl<'a> TypeChecker {
             for param in params {
                 let resolved_type = self.resolve_type(&param.param_type);
                 self.types.add(
-                    token_value!(&param.name),
+                    token_value!(&param.name, Identifier),
                     // The is_mutable flag is always true for function parameters,
                     // and params are only passed when a function is being resolved.
                     (resolved_type, true),
@@ -312,7 +318,7 @@ impl<'a> TypeChecker {
         match stmt {
             ast::Stmt::Expression(ref expr) => hir::Statement::Expression(self.resolve_expr(expr)),
             ast::Stmt::Let(ref let_stmt) => self.resolve_let_stmt(let_stmt),
-            e => unimplemented!("Resolve type for {:?}", e),
+            e => unimplemented!("Resolve type for statement {:?}", e),
         }
     }
 
@@ -326,7 +332,7 @@ impl<'a> TypeChecker {
 
         if ty == Type::Unit {
             // Unit types cannot be assigned to anything.
-            self.report_unit_assignment(let_stmt.name.get_file_pointer());
+            self.report_unit_assignment(let_stmt.span);
         }
 
         if let Some(set_type) = &let_stmt.set_type {
@@ -334,9 +340,9 @@ impl<'a> TypeChecker {
 
             if set_type == Type::Unit {
                 // Unit types cannot be assigned to anything.
-                self.report_type_error(&set_type, &ty, let_stmt.name.get_file_pointer());
+                self.report_type_error(&set_type, &ty, let_stmt.span);
             } else if ty != set_type && !ty.can_be_cast_to(&set_type) {
-                self.report_type_error(&set_type, &ty, let_stmt.name.get_file_pointer());
+                self.report_type_error(&set_type, &ty, let_stmt.span);
             }
         }
 
@@ -355,7 +361,9 @@ impl<'a> TypeChecker {
         match expr {
             ast::Expr::Literal(ref literal) => self.resolve_literal(literal),
             ast::Expr::Variable(ref var, ..) => self.resolve_variable(var),
-            ast::Expr::ArrayLiteral(ref elements) => self.resolve_array_literal(elements),
+            ast::Expr::ArrayLiteral(ref span, ref elements) => {
+                self.resolve_array_literal(*span, elements)
+            }
             ast::Expr::ArrayAccess(ref array_access) => self.resolve_array_access(array_access),
             ast::Expr::Binary(ref binary_expr) => self.resolve_binary_expression(binary_expr),
             ast::Expr::Unary(ref unary_expr) => self.resolve_unary_expression(unary_expr),
@@ -399,14 +407,6 @@ impl<'a> TypeChecker {
                 let ty = Type::String;
                 hir::Expression::Literal { value, ty }
             }
-            ast::Literal::NotRecovered => {
-                // Actual None type implementation:
-                // hir::Expression::Literal {
-                //     value: "()".to_string(),
-                //     ty: Type::Unit,
-                // }
-                unimplemented!("NotRecovered");
-            }
         }
     }
 
@@ -421,7 +421,7 @@ impl<'a> TypeChecker {
                 ty: ty.clone(),
             }
         } else {
-            self.report_undefined_variable(variable_name.clone(), var.get_file_pointer());
+            self.report_undefined_variable(variable_name.clone(), var.span);
             // TODO: Check this approach
             hir::Expression::Variable {
                 name: variable_name,
@@ -432,7 +432,7 @@ impl<'a> TypeChecker {
     }
 
     /// Resolve the types of the given array literal.
-    fn resolve_array_literal(&mut self, elements: &'a [ast::Expr]) -> hir::Expression {
+    fn resolve_array_literal(&mut self, span: Span, elements: &'a [ast::Expr]) -> hir::Expression {
         let resolved_elements = elements
             .iter()
             .map(|e| self.resolve_expr(e))
@@ -449,16 +449,7 @@ impl<'a> TypeChecker {
             let found = element.resulting_type();
             if found != first_element_type {
                 // Expected first element type, but found another.
-                // TODO: Acquire file pointer correctly
-                self.report_type_error(
-                    &first_element_type,
-                    &found,
-                    FilePointer {
-                        file_position: 0,
-                        line_position: 0,
-                        line: 0,
-                    },
-                );
+                self.report_type_error(&first_element_type, &found, span);
             }
         }
 
@@ -478,15 +469,7 @@ impl<'a> TypeChecker {
         let element_type = match &array.resulting_type() {
             Type::Array(t) => *t.clone(),
             e => {
-                // TODO: Acquire file pointer correctly
-                self.report_indexing_non_array(
-                    e.to_string(),
-                    FilePointer {
-                        file_position: 0,
-                        line_position: 0,
-                        line: 0,
-                    },
-                );
+                self.report_indexing_non_array(e.to_string(), array_access.span);
                 Type::Unit
             }
         };
@@ -507,19 +490,14 @@ impl<'a> TypeChecker {
         // TODO: Support casting
         let left = self.resolve_expr(&binary_expr.left);
         let right = self.resolve_expr(&binary_expr.right);
-        let op = hir::BinaryOp::from(token_value!(&binary_expr.operator).as_str());
+        let op = hir::BinaryOp::from(&binary_expr.operator.token_type);
 
         let left_type = left.resulting_type();
         let right_type = right.resulting_type();
         let resulting_type = match op.predict_output(&left_type, &right_type) {
             Some(t) => t,
             None => {
-                self.report_binary_op_error(
-                    &op,
-                    &left_type,
-                    &right_type,
-                    binary_expr.operator.get_file_pointer(),
-                );
+                self.report_binary_op_error(&op, &left_type, &right_type, binary_expr.span);
                 Type::Unit
             }
         };
@@ -538,7 +516,7 @@ impl<'a> TypeChecker {
     fn resolve_unary_expression(&mut self, unary_expr: &'a ast::UnaryExpr) -> hir::Expression {
         let expr = self.resolve_expr(&unary_expr.right);
         let ty = expr.resulting_type();
-        let op = hir::UnaryOp::from(token_value!(&unary_expr.operator).as_str());
+        let op = hir::UnaryOp::from(&unary_expr.operator.token_type);
 
         hir::Expression::Unary {
             expr: Box::new(expr),
@@ -561,23 +539,15 @@ impl<'a> TypeChecker {
             .map(|arg| arg.resulting_type())
             .collect::<Vec<Type>>();
 
-        // let function_signature = self.functions.get(&callee).expect("Function not found").clone();
-        //
-        // let signatures_match = Self::verify_fn_call_types(&function_signature.params, &arg_types);
-        // if let Some((expected, found)) = signatures_match.err() {
-        //     let fp = call_expr.callee.get_file_pointer();
-        //     self.report_type_error(expected, found, fp);
-        // }
         let function_signature = match self.functions.get(&callee) {
             Some(signature) => {
                 let signatures_match = Self::verify_fn_call_types(&signature.params, &arg_types);
                 if let Some((expected, found)) = signatures_match.err() {
-                    let fp = call_expr.callee.get_file_pointer();
                     self.errors.push(
                         TypeError::IncorrectType {
                             expected: expected.to_string(),
                             incorrect: found.to_string(),
-                            file_pointer: fp,
+                            span: call_expr.span,
                         }
                         .into(),
                     );
@@ -585,10 +555,7 @@ impl<'a> TypeChecker {
                 signature.clone()
             }
             None => {
-                self.report_undefined_function(
-                    callee.to_string(),
-                    call_expr.callee.get_file_pointer(),
-                );
+                self.report_undefined_function(callee.to_string(), call_expr.callee.span);
                 // TODO: check
                 hir::FunctionSignature {
                     name: callee.to_string(),
@@ -626,22 +593,31 @@ impl<'a> TypeChecker {
 
         let object_name = Self::get_object_name(&object_ty);
 
-        // TODO: Better error handling
         let struct_exists = self.types.get(&object_name).is_some();
         if !struct_exists {
-            panic!("Struct not found: {}", object_name);
+            self.report_undefined_variable(object_name.clone(), method_call.span)
         }
 
+        // TODO: Check below
         let method_signature = self
             .struct_methods
             .get(&object_name)
-            .expect("Method not found") // If struct exists but there are no methods
-            .get(&method)
-            .expect("Method not found");
+            .and_then(|methods| methods.get(&method).cloned())
+            .or_else(|| {
+                self.report_undefined_function(method.to_string(), method_call.span);
+                None
+            });
 
-        let signatures_match = Self::verify_fn_call_types(&method_signature.params, &arg_types);
-        // TODO: Better error handling
-        assert!(signatures_match.is_ok(), "Function signature mismatch");
+        let method_return_type = if let Some(signature) = &method_signature {
+            if let Err((expected, found)) =
+                Self::verify_fn_call_types(&signature.params, &arg_types)
+            {
+                self.report_type_error(expected, found, method_call.span);
+            }
+            signature.return_type.clone()
+        } else {
+            Type::Unit
+        };
 
         hir::Expression::MethodCall {
             object: Box::new(object),
@@ -649,7 +625,7 @@ impl<'a> TypeChecker {
             object_name,
             method,
             arguments,
-            method_return_type: method_signature.return_type.clone(),
+            method_return_type,
         }
     }
 
@@ -666,7 +642,44 @@ impl<'a> TypeChecker {
             .map(|(token, expr)| (token_value!(token, Identifier), self.resolve_expr(expr)))
             .collect::<Vec<(String, hir::Expression)>>();
 
-        // TODO: Verify struct args
+        // Verify struct args
+
+        match self.struct_fields.get(&struct_name) {
+            Some(field_types) => {
+                if fields.len() != field_types.len() {
+                    self.errors.push(
+                        TypeError::IncorrectStructLiteral {
+                            span: struct_literal.span,
+                        }
+                        .into(),
+                    );
+                } else {
+                    for (field_name, field_expr) in fields.iter() {
+                        let field_type = field_types.get(field_name);
+                        if let Some(field_type) = field_type {
+                            if field_expr.resulting_type() != *field_type {
+                                self.errors.push(
+                                    TypeError::IncorrectStructLiteral {
+                                        span: struct_literal.span,
+                                    }
+                                    .into(),
+                                );
+                            }
+                        } else {
+                            self.errors.push(
+                                TypeError::IncorrectStructLiteral {
+                                    span: struct_literal.span,
+                                }
+                                .into(),
+                            );
+                        }
+                    }
+                }
+            }
+            None => {
+                self.report_undefined_variable(struct_name.clone(), struct_literal.span);
+            }
+        }
 
         hir::Expression::StructLiteral {
             struct_name,
@@ -687,15 +700,20 @@ impl<'a> TypeChecker {
 
         // TODO: Multiple fields
         let field = token_value!(&struct_access.fields[0]);
-        // TODO: Graceful error handling
 
         let returned_field_type = self
             .struct_fields
             .get(&object_name)
-            .expect("Struct not found")
-            .get(&field)
-            .expect("Field not found")
-            .clone();
+            .and_then(|fields| fields.get(&field).cloned())
+            .or_else(|| {
+                self.report_unknown_struct_field(
+                    object_name.clone(),
+                    field.clone(),
+                    struct_access.span,
+                );
+                None
+            })
+            .unwrap_or(Type::Unit); // TODO: All type
 
         hir::Expression::StructAccess {
             object: Box::new(object),
@@ -714,15 +732,19 @@ impl<'a> TypeChecker {
         let r_value_type = r_value.resulting_type();
 
         // Check if the variable is declared mutable
-        // TODO: Better error handling
-        assert_eq!(
-            l_value_type, r_value_type,
-            "Assignment type mismatch: {:?}, {:?}",
-            l_value_type, r_value_type
-        );
-        if let hir::Expression::Variable { name, .. } = &l_value {
-            let (_, is_mut) = self.types.get(name).expect("Variable not found");
-            assert!(*is_mut, "Assignment to immutable variable");
+        if l_value_type != r_value_type {
+            self.report_type_error(&l_value_type, &r_value_type, assignment.span);
+        } else if let hir::Expression::Variable { name, .. } = &l_value {
+            match self.types.get(name) {
+                Some((_, is_mut)) => {
+                    if !*is_mut {
+                        self.report_immutable_assignment(name.clone(), assignment.span);
+                    }
+                }
+                None => {
+                    self.report_undefined_variable(name.clone(), assignment.span);
+                }
+            }
         }
 
         hir::Expression::Assignment {
@@ -755,13 +777,13 @@ impl<'a> TypeChecker {
             .as_ref()
             .map(|else_branch| Box::new(self.resolve_block(else_branch, None)));
 
-        // TODO: Better error handling
         // Check that all elif branch types are the same
         let elif_branch_type = elif_branches
             .iter()
             .map(|(_, block)| &block.return_type)
             .fold(then_branch_type, |acc, ty| {
-                assert_eq!(acc, ty, "If branch types do not match");
+                // TODO: a custom error message?
+                self.report_type_error(acc, ty, if_expr.span);
                 acc
             });
 
@@ -772,7 +794,9 @@ impl<'a> TypeChecker {
             then_branch_type == elif_branch_type
         };
 
-        assert!(return_types_match, "If branch types do not match");
+        if !return_types_match {
+            self.report_type_error(then_branch_type, elif_branch_type, if_expr.span);
+        }
 
         hir::Expression::If {
             condition: Box::new(condition),
@@ -787,7 +811,7 @@ impl<'a> TypeChecker {
     fn resolve_type(&mut self, ty: &'a ast::Type) -> Type {
         match ty {
             ast::Type::Simple(ref tok) => self.resolve_non_generic_type(tok),
-            ast::Type::Generic(ref name, ref inner_generics) => {
+            ast::Type::Generic(_, ref name, ref inner_generics) => {
                 let outer_generic = self.resolve_non_generic_type(name);
                 let inner_generics = inner_generics
                     .iter()
@@ -795,8 +819,7 @@ impl<'a> TypeChecker {
                     .collect::<Vec<Type>>();
                 Type::Generic(Box::new(outer_generic), inner_generics)
             }
-            ast::Type::Empty => Type::Unit,
-            ast::Type::NotRecovered => unimplemented!("NotRecovered"),
+            ast::Type::Empty(_) => Type::Unit,
         }
     }
 

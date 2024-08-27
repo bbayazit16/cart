@@ -20,9 +20,13 @@ impl Parser {
         } else {
             self.parse_struct_param_values()?
         };
-        self.consume_rbrace()?;
+        let ending_span = self.consume_rbrace()?.span;
 
-        Ok(ast::StructLiteral { name, fields })
+        Ok(ast::StructLiteral {
+            span: name.span.merge(&ending_span),
+            name,
+            fields,
+        })
     }
 
     // structParamValues  → structParamValue ( "," structParamValue )* ;
@@ -39,7 +43,7 @@ impl Parser {
     fn parse_struct_param_value(&mut self) -> Result<(Token, ast::Expr), CompileError> {
         let ident = self.consume_identifier()?;
         self.consume_colon()?;
-        let expr = self.parse_expr()?;
+        let expr = self.parse_expr();
         Ok((ident, expr))
     }
 
@@ -50,6 +54,7 @@ impl Parser {
         let field_type = self.parse_type()?;
 
         Ok(ast::StructField {
+            span: identifier.span.merge(&field_type.span()),
             name: identifier,
             field_type,
         })
@@ -65,10 +70,14 @@ impl Parser {
             None => self.consume_identifier()?,
         };
 
+        let ending_span;
         let variant = if self.match_colon_colon() {
             self.advance();
-            Some(self.consume_identifier()?)
+            let consumed_ident = self.consume_identifier()?;
+            ending_span = consumed_ident.span;
+            Some(consumed_ident)
         } else {
+            ending_span = name.span;
             None
         };
 
@@ -76,6 +85,7 @@ impl Parser {
 
         if !self.match_lparen() {
             return Ok(ast::EnumValue {
+                span: name.span.merge(&ending_span),
                 name,
                 variant,
                 arguments: Vec::new(),
@@ -93,9 +103,10 @@ impl Parser {
             self.parse_arguments()?
         };
 
-        self.advance();
+        let final_span = self.advance().span;
 
         Ok(ast::EnumValue {
+            span: name.span.merge(&final_span),
             name,
             variant,
             arguments,
@@ -150,7 +161,11 @@ impl Parser {
         self.consume_colon()?;
         let param_type = self.parse_type()?;
 
-        Ok(ast::Parameter { name, param_type })
+        Ok(ast::Parameter {
+            span: name.span.merge(&param_type.span()),
+            name,
+            param_type,
+        })
     }
 
     // Return a StructAccessExpr, if exists.
@@ -160,13 +175,21 @@ impl Parser {
     ) -> Result<ast::StructAccessExpr, CompileError> {
         // TODO: Reporter - temp. variable
         // TODO: Handle expr properly
-        let mut fields = vec![self.consume_identifier()?];
+        let consumed_ident = self.consume_identifier()?;
+        let mut last_span = consumed_ident.span;
+        let mut fields = vec![consumed_ident];
         while self.match_dot() {
             self.advance();
-            fields.push(self.consume_identifier()?);
+            let consumed = self.consume_identifier()?;
+            last_span = consumed.span;
+            fields.push(consumed);
         }
 
-        Ok(ast::StructAccessExpr { object, fields })
+        Ok(ast::StructAccessExpr {
+            span: object.span().merge(&last_span),
+            object: Box::new(object),
+            fields,
+        })
     }
 
     // errorVariant  → IDENTIFIER ( "(" structList ")" )? "=" STRING_LITERAL ;
@@ -185,6 +208,7 @@ impl Parser {
         let message = self.consume_string()?;
 
         Ok(ast::ErrorVariant {
+            span: name.span.merge(&message.span),
             name,
             fields,
             message,

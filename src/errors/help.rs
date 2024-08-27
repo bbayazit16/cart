@@ -29,6 +29,13 @@ impl Help for TypeError {
             TypeError::IndexingNonArray { .. } => {
                 Some("Only array types can be indexed with []".into())
             }
+            TypeError::IncorrectStructLiteral { .. } => {
+                Some("Fill in the remaining fields of the struct".into())
+            }
+            TypeError::ImmutableAssignment { variable, .. } => Some(format!(
+                "Mark {} as mutable using the `mut` keyword",
+                variable
+            )),
             _ => None,
         }
     }

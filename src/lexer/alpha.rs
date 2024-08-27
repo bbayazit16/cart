@@ -1,115 +1,130 @@
-use crate::context::FilePointer;
+use crate::context::{Position, Span};
 use crate::errors::{CompileError, SyntaxError};
 use crate::lexer::Lexer;
-use crate::token::Token;
+use crate::token::{Token, TokenType};
+
+macro_rules! basic_token {
+    ($token:ident, $position:expr) => {
+        Token {
+            span: Span::single($position),
+            token_type: TokenType::$token,
+        }
+    };
+    ($self_:expr, $token:ident, $start:expr) => {
+        Token {
+            span: Span::new($start, $self_.position),
+            token_type: TokenType::$token,
+        }
+    };
+}
 
 impl Lexer {
     /// Return the next token from the input.
     pub(super) fn next_alpha(&mut self) -> Token {
         self.skip_whitespace_and_comments();
-        let file_pointer = self.file_pointer;
+        let start = self.position;
         match self.advance() {
             Some(current_char) => {
                 match current_char {
-                    '(' => Token::LeftParen(file_pointer),
-                    ')' => Token::RightParen(file_pointer),
-                    '{' => Token::LeftBrace(file_pointer),
-                    '}' => Token::RightBrace(file_pointer),
-                    '[' => Token::LeftBracket(file_pointer),
-                    ']' => Token::RightBracket(file_pointer),
-                    ',' => Token::Comma(file_pointer),
-                    '.' => Token::Dot(file_pointer),
+                    '(' => basic_token!(LeftParen, start),
+                    ')' => basic_token!(RightParen, start),
+                    '{' => basic_token!(LeftBrace, start),
+                    '}' => basic_token!(RightBrace, start),
+                    '[' => basic_token!(LeftBracket, start),
+                    ']' => basic_token!(RightBracket, start),
+                    ',' => basic_token!(Comma, start),
+                    '.' => basic_token!(Dot, start),
+                    ';' => basic_token!(Semicolon, start),
+                    '^' => basic_token!(Caret, start),
+                    '~' => basic_token!(Tilde, start),
+                    '?' => basic_token!(Question, start),
+                    '@' => basic_token!(At, start),
                     '-' => {
                         if self.match_next('>') {
-                            Token::ThinArrow(file_pointer)
+                            basic_token!(self, ThinArrow, start)
                         } else if self.match_next('=') {
-                            Token::MinusEqual(file_pointer)
+                            basic_token!(self, MinusEqual, start)
                         } else {
-                            Token::Minus(file_pointer)
+                            basic_token!(Minus, start)
                         }
                     }
                     '+' => {
                         if self.match_next('=') {
-                            Token::PlusEqual(file_pointer)
+                            basic_token!(self, PlusEqual, start)
                         } else {
-                            Token::Plus(file_pointer)
+                            basic_token!(Plus, start)
                         }
                     }
-                    ';' => Token::Semicolon(file_pointer),
                     ':' => {
                         if self.match_next(':') {
-                            Token::ColonColon(file_pointer)
+                            basic_token!(self, ColonColon, start)
                         } else {
-                            Token::Colon(file_pointer)
+                            basic_token!(Colon, start)
                         }
                     }
                     '/' => {
                         if self.match_next('=') {
-                            Token::SlashEqual(file_pointer)
+                            basic_token!(self, SlashEqual, start)
                         } else {
-                            Token::Slash(file_pointer)
+                            basic_token!(Slash, start)
                         }
                     }
                     '*' => {
                         if self.match_next('=') {
-                            Token::StarEqual(file_pointer)
+                            basic_token!(self, StarEqual, start)
                         } else {
-                            Token::Star(file_pointer)
+                            basic_token!(Star, start)
                         }
                     }
                     '%' => {
                         if self.match_next('=') {
-                            Token::PercentEqual(file_pointer)
+                            basic_token!(self, PercentEqual, start)
                         } else {
-                            Token::Percent(file_pointer)
+                            basic_token!(Percent, start)
                         }
                     }
                     '&' => {
                         if self.match_next('&') {
-                            Token::AmpersandAmpersand(file_pointer)
+                            basic_token!(self, AmpersandAmpersand, start)
                         } else {
-                            Token::Ampersand(file_pointer)
+                            basic_token!(Ampersand, start)
                         }
                     }
                     '|' => {
                         if self.match_next('|') {
-                            Token::PipePipe(file_pointer)
+                            basic_token!(self, PipePipe, start)
                         } else {
-                            Token::Pipe(file_pointer)
+                            basic_token!(Pipe, start)
                         }
                     }
-                    '^' => Token::Caret(file_pointer),
-                    '~' => Token::Tilde(file_pointer),
-                    '?' => Token::Question(file_pointer),
-                    '@' => Token::At(file_pointer),
                     '!' => {
                         if self.match_next('=') {
-                            Token::BangEqual(file_pointer)
+                            basic_token!(self, BangEqual, start)
                         } else {
-                            Token::Bang(file_pointer)
+                            basic_token!(Bang, start)
                         }
                     }
                     '=' => {
                         if self.match_next('=') {
-                            Token::EqualEqual(file_pointer)
+                            basic_token!(self, EqualEqual, start)
                         } else if self.match_next('>') {
-                            Token::FatArrow(file_pointer)
+                            basic_token!(self, FatArrow, start)
                         } else {
-                            Token::Equal(file_pointer)
+                            basic_token!(Equal, start)
                         }
                     }
                     '>' => {
                         if self.match_next('=') {
-                            Token::GreaterEqual(file_pointer)
+                            basic_token!(self, GreaterEqual, start)
                         } else {
-                            Token::RightAngle(file_pointer)
+                            basic_token!(RightAngle, start)
                         }
                     }
                     '<' => {
                         if self.match_next('=') {
-                            Token::LessEqual(file_pointer)
+                            basic_token!(self, LessEqual, start)
                         } else {
-                            Token::LeftAngle(file_pointer)
+                            basic_token!(LeftAngle, start)
                         }
                     }
                     _ => {
@@ -122,11 +137,12 @@ impl Lexer {
                         } else if current_char == '"' {
                             self.string()
                         } else {
-                            let e = CompileError::Syntax(SyntaxError::UnexpectedCharacter {
-                                file_pointer,
-                                character: current_char,
-                            });
-                            self.report_error(&e);
+                            self.report_error(&CompileError::Syntax(
+                                SyntaxError::UnexpectedCharacter {
+                                    span: Span::single(start),
+                                    character: current_char,
+                                },
+                            ));
 
                             // Error recovery: attempt to parse as an identifier
                             self.identifier_or_keyword(current_char)
@@ -134,57 +150,61 @@ impl Lexer {
                     }
                 }
             }
-            None => Token::Eof(file_pointer),
+            None => basic_token!(Eof, start),
         }
     }
     /// Lex an identifier or a keyword.
     pub(super) fn identifier_or_keyword(&mut self, initial_char: char) -> Token {
-        let start = self.file_pointer.file_position - initial_char.len_utf8();
-        let starting_file_position = FilePointer {
-            file_position: start,
-            line: self.file_pointer.line,
-            line_position: self.file_pointer.line_position - initial_char.len_utf8(),
+        let start = Position {
+            line: self.position.line,
+            column: self.position.column - initial_char.len_utf8(),
+            offset: self.position.offset - initial_char.len_utf8(),
         };
 
         self.advance_while_alphanumeric();
 
-        let end = self.file_pointer.file_position;
-        let text = self.unchecked_index_into_buffer(start, end);
+        let text = self.unchecked_index_into_buffer(start.offset, self.position.offset);
         match text {
-            "self" => Token::Self_(starting_file_position),
-            "enum" => Token::Enum(starting_file_position),
-            "error" => Token::Error(starting_file_position),
-            "and" => Token::And(starting_file_position),
-            "async" => Token::Async(starting_file_position),
-            "await" => Token::Await(starting_file_position),
-            "struct" => Token::Struct(starting_file_position),
-            "match" => Token::Match(starting_file_position),
-            "else" => Token::Else(starting_file_position),
-            "elif" => Token::Elif(starting_file_position),
-            "false" => Token::False(starting_file_position),
-            "true" => Token::True(starting_file_position),
-            "func" => Token::Func(starting_file_position),
-            "for" => Token::For(starting_file_position),
-            "if" => Token::If(starting_file_position),
-            "let" => Token::Let(starting_file_position),
-            "mut" => Token::Mut(starting_file_position),
-            "or" => Token::Or(starting_file_position),
-            "return" => Token::Return(starting_file_position),
-            "while" => Token::While(starting_file_position),
-            "use" => Token::Use(starting_file_position),
-            "extension" => Token::Extension(starting_file_position),
-            "implements" => Token::Implements(starting_file_position),
-            "do" => Token::Do(starting_file_position),
-            "in" => Token::In(starting_file_position),
-            "_" => Token::Underscore(starting_file_position),
-            _ => Token::Identifier(starting_file_position, text.to_string()),
+            "self" => basic_token!(self, Self_, start),
+            "enum" => basic_token!(self, Enum, start),
+            "error" => basic_token!(self, Error, start),
+            "and" => basic_token!(self, And, start),
+            "async" => basic_token!(self, Async, start),
+            "await" => basic_token!(self, Await, start),
+            "struct" => basic_token!(self, Struct, start),
+            "match" => basic_token!(self, Match, start),
+            "else" => basic_token!(self, Else, start),
+            "elif" => basic_token!(self, Elif, start),
+            "false" => basic_token!(self, False, start),
+            "true" => basic_token!(self, True, start),
+            "func" => basic_token!(self, Func, start),
+            "for" => basic_token!(self, For, start),
+            "if" => basic_token!(self, If, start),
+            "let" => basic_token!(self, Let, start),
+            "mut" => basic_token!(self, Mut, start),
+            "or" => basic_token!(self, Or, start),
+            "return" => basic_token!(self, Return, start),
+            "while" => basic_token!(self, While, start),
+            "use" => basic_token!(self, Use, start),
+            "extension" => basic_token!(self, Extension, start),
+            "implements" => basic_token!(self, Implements, start),
+            "do" => basic_token!(self, Do, start),
+            "in" => basic_token!(self, In, start),
+            "_" => basic_token!(self, Underscore, start),
+            _ => Token {
+                token_type: TokenType::Identifier(text.to_string()),
+                span: Span::new(start, self.position),
+            },
         }
     }
 
     /// Lex a number. Return CompileError if any error has occurred.
     pub(super) fn number(&mut self, initial_char: char) -> Token {
-        let start = self.file_pointer.file_position - initial_char.len_utf8();
-        let line_start = self.file_pointer.line_position - initial_char.len_utf8();
+        let start = Position {
+            line: self.position.line,
+            column: self.position.column - initial_char.len_utf8(),
+            offset: self.position.offset - initial_char.len_utf8(),
+        };
 
         let mut is_float = false;
         let mut base = 10;
@@ -205,30 +225,31 @@ impl Lexer {
                 }
                 Some(c) if c.is_ascii_digit() || c.is_alphabetic() => {
                     // Unknown base
-                    let e = CompileError::Syntax(SyntaxError::InvalidNumberLiteral {
-                        file_pointer: self.file_pointer,
+                    // When reporting errors, include the character that caused the error
+                    self.report_error(&CompileError::Syntax(SyntaxError::InvalidNumberLiteral {
+                        span: Span::new(
+                            start,
+                            Position {
+                                line: self.position.line,
+                                column: self.position.column + 1,
+                                offset: self.position.offset + 1,
+                            },
+                        ),
                         literal: format!("0{}", c),
-                    });
-                    self.report_error(&e);
+                    }));
 
                     // Error recovery:
-
                     // Consume the unknown base
                     self.advance();
                     // Try parsing the number again
-                    return self.recover_potential_number(line_start, is_float, c);
+                    return self.recover_potential_number(is_float, c);
                 }
                 _ => {
                     // 0
-                    return Token::Number(
-                        FilePointer {
-                            file_position: start,
-                            line_position: line_start,
-                            ..self.file_pointer
-                        },
-                        "0".to_string(),
-                        false,
-                    );
+                    return Token {
+                        token_type: TokenType::Integer("0".into()),
+                        span: Span::new(start, self.position),
+                    };
                 }
             }
         }
@@ -246,12 +267,17 @@ impl Lexer {
             } else if c == '_' {
                 if last_char_underscore {
                     // Two consecutive __ encountered
-                    let e = CompileError::Syntax(SyntaxError::UnexpectedCharacter {
-                        file_pointer: self.file_pointer,
+                    self.report_error(&CompileError::Syntax(SyntaxError::UnexpectedCharacter {
+                        span: Span::new(
+                            start,
+                            Position {
+                                line: self.position.line,
+                                column: self.position.column + 1,
+                                offset: self.position.offset + 1,
+                            },
+                        ),
                         character: c,
-                    });
-
-                    self.report_error(&e);
+                    }))
 
                     // Error recovery: just ignore and parse things like 4__0 as 4.
                 }
@@ -264,13 +290,12 @@ impl Lexer {
                     has_digits = false;
                 } else {
                     // Not a valid digit
-                    let e = CompileError::Syntax(SyntaxError::InvalidNumberLiteral {
-                        file_pointer: self.file_pointer,
+                    self.report_error(&CompileError::Syntax(SyntaxError::InvalidNumberLiteral {
+                        span: Span::new(start, self.position),
                         literal: self
-                            .unchecked_index_into_buffer(start, self.file_pointer.file_position)
+                            .unchecked_index_into_buffer(start.offset, self.position.offset)
                             .to_string(),
-                    });
-                    self.report_error(&e);
+                    }));
 
                     // Error recovery: treat as integer, ignoring the dot
                     self.advance();
@@ -286,66 +311,65 @@ impl Lexer {
         // or space. If the next character is a number, then there is something wrong.
         if let Some(c) = self.peek() {
             if c.is_alphanumeric() {
-                let e = CompileError::Syntax(SyntaxError::InvalidNumberLiteral {
-                    file_pointer: self.file_pointer,
+                self.report_error(&CompileError::Syntax(SyntaxError::InvalidNumberLiteral {
+                    span: Span::new(
+                        start,
+                        Position {
+                            line: self.position.line,
+                            column: self.position.column + 1,
+                            offset: self.position.offset + 1,
+                        },
+                    ),
                     literal: self
-                        .unchecked_index_into_buffer(start, self.file_pointer.file_position + 1)
+                        .unchecked_index_into_buffer(start.offset, self.position.offset + 1)
                         .to_string(),
-                });
-
-                self.report_error(&e);
+                }));
 
                 // Error recovery: Ignore the invalid suffix
-                return self.recover_potential_number(line_start, is_float, c);
+                return self.recover_potential_number(is_float, c);
             }
         }
 
         if last_char_underscore || !has_digits {
-            let e = CompileError::Syntax(SyntaxError::InvalidNumberLiteral {
-                file_pointer: self.file_pointer,
+            self.report_error(&CompileError::Syntax(SyntaxError::InvalidNumberLiteral {
+                span: Span::new(start, self.position),
                 literal: self
-                    .unchecked_index_into_buffer(start, self.file_pointer.file_position)
+                    .unchecked_index_into_buffer(start.offset, self.position.offset)
                     .to_string(),
-            });
-
-            self.report_error(&e);
+            }));
 
             // Error recovery: Already handled in the previous step.
             // There are no digits, so return 0.
-            return Token::Number(
-                FilePointer {
-                    file_position: start,
-                    line_position: line_start,
-                    ..self.file_pointer
-                },
-                "0".into(),
-                false,
-            );
+            return Token {
+                token_type: TokenType::Integer("0".into()),
+                span: Span::new(start, self.position),
+            };
         }
 
         let text = self
-            .unchecked_index_into_buffer(start, self.file_pointer.file_position)
+            .unchecked_index_into_buffer(start.offset, self.position.offset)
             .to_string()
             .replace('_', "");
-        Token::Number(
-            FilePointer {
-                file_position: start,
-                line_position: line_start,
-                ..self.file_pointer
+
+        Token {
+            token_type: if is_float {
+                TokenType::Float(text)
+            } else {
+                TokenType::Integer(text)
             },
-            text,
-            is_float,
-        )
+            span: Span::new(start, self.position),
+        }
     }
 
     /// Lex a string. Return a CompileError if any error has occurred.
     pub(super) fn string(&mut self) -> Token {
         // 1 subtracted as the current character " is already consumed
-        let start = FilePointer {
-            file_position: self.file_pointer.file_position - 1,
-            line_position: self.file_pointer.line_position - 1,
-            ..self.file_pointer
+        let start = Position {
+            line: self.position.line,
+            column: self.position.column - 1,
+            offset: self.position.offset - 1,
         };
+
         let mut value = String::new();
         let mut has_advanced_once = false;
         while let Some(c) = self.advance() {
@@ -362,44 +386,44 @@ impl Lexer {
                     Some('\"') => value.push('\"'),
                     Some(c) => value.push(c),
                     None => {
-                        let e = CompileError::Syntax(SyntaxError::UnterminatedStringLiteral {
-                            file_pointer: start,
-                        });
+                        self.report_error(&CompileError::Syntax(
+                            SyntaxError::UnterminatedStringLiteral {
+                                span: Span::new(start, self.position),
+                            },
+                        ));
 
-                        self.report_error(&e);
-                        // Just ignore the char
+                        // Error recovery: just ignore the char
                     }
                 }
+            } else if c == '\n' {
+                self.position.line += 1;
+                self.position.column = 1;
+
+                self.report_error(&CompileError::Syntax(
+                    SyntaxError::UnterminatedStringLiteral {
+                        span: Span::new(start, self.position),
+                    },
+                ));
+
+                // Error recovery: ignore the line end, and terminate the string here
+                break;
             } else {
-                if c == '\n' {
-                    self.file_pointer.line += 1;
-                    self.file_pointer.line_position = 1;
-
-                    let e = CompileError::Syntax(SyntaxError::UnterminatedStringLiteral {
-                        file_pointer: start,
-                    });
-
-                    self.report_error(&e);
-                    // Ignore the line end, and terminate the string here
-                    value.push('"');
-                    break;
-                }
                 value.push(c);
             }
         }
 
         if (self.peek().is_none() && !self.buffer.ends_with('"')) || !has_advanced_once {
-            let e = CompileError::Syntax(SyntaxError::UnterminatedStringLiteral {
-                file_pointer: start,
-            });
-
-            self.report_error(&e);
+            self.report_error(&CompileError::Syntax(
+                SyntaxError::UnterminatedStringLiteral {
+                    span: Span::new(start, self.position),
+                },
+            ));
             // Error already recovered, so it'll always end with "
         }
 
-        Token::String(
-            start,
-            value,
-        )
+        Token {
+            token_type: TokenType::String(value),
+            span: Span::new(start, self.position),
+        }
     }
 }

@@ -2,8 +2,8 @@
 //! reporting the compile-time errors, including syntax, type, and IO Errors.
 //!
 //! The reporter operates by taking in an error, as defined in the `errors` module.
-use crate::context::FilePointer;
-use crate::errors::{CompileError, Help, Position, SyntaxError, TypeError};
+use crate::context::Span;
+use crate::errors::{CompileError, Help, SyntaxError, TypeError};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -53,21 +53,13 @@ impl Reporter {
     /// Reports a Syntax Error to stderr.
     /// Forwards the message to `print_error`.
     fn report_syntax_error(&self, error: &SyntaxError) {
-        self.print_error(
-            error.to_string(),
-            error.file_position(),
-            error.help_message(),
-        )
+        self.print_error(error.to_string(), error.span(), error.help_message())
     }
 
     /// Reports a Type Error to stderr.
     /// Forwards the message to `print_error`.
     fn report_type_error(&self, error: &TypeError) {
-        self.print_error(
-            error.to_string(),
-            error.file_position(),
-            error.help_message(),
-        )
+        self.print_error(error.to_string(), error.span(), error.help_message())
     }
 
     /// Reports an IO Error to stderr.
@@ -90,7 +82,7 @@ impl Reporter {
     pub(crate) fn print_error<S: AsRef<str>>(
         &self,
         message: S,
-        file_pointer: FilePointer,
+        span: Span,
         help_message: Option<S>,
     ) {
         let file = match File::open(&self.file_path) {
@@ -113,15 +105,15 @@ impl Reporter {
 
         let reader = BufReader::new(file);
 
-        self.print_error_header(&message, &file_pointer);
-        self.print_error_lines(reader, file_pointer);
+        self.print_error_header(&message, &span);
+        self.print_error_lines(reader, span);
         if let Some(help) = help_message {
             self.print_help_message(help);
         }
     }
 
     /// Prints the error header.
-    fn print_error_header<S: AsRef<str>>(&self, message: &S, file_pointer: &FilePointer) {
+    fn print_error_header<S: AsRef<str>>(&self, message: &S, span: &Span) {
         eprintln!(
             "{}{}error: {}{}",
             ANSI_BOLD,
@@ -133,21 +125,21 @@ impl Reporter {
         eprintln!(
             "  --> {}:{}:{}",
             self.file_path.display(),
-            file_pointer.line,
-            file_pointer.line_position
+            span.start.line,
+            span.start.column
         );
         eprintln!();
     }
 
     /// Prints the error lines to provide context and highlight the error.
-    fn print_error_lines(&self, mut reader: BufReader<File>, file_pointer: FilePointer) {
-        let start_line = if file_pointer.line > LINE_CONTEXT {
-            file_pointer.line - LINE_CONTEXT
+    fn print_error_lines(&self, mut reader: BufReader<File>, span: Span) {
+        let start_line = if span.start.line > LINE_CONTEXT {
+            span.start.line - LINE_CONTEXT
         } else {
             1
         };
 
-        let end_line = file_pointer.line + LINE_CONTEXT;
+        let end_line = span.end.line + LINE_CONTEXT;
 
         let mut current_line = 1;
         let mut line = String::new();
@@ -156,8 +148,8 @@ impl Reporter {
             match reader.read_line(&mut line) {
                 Ok(0) => break, // EOF
                 Ok(_) => {
-                    if current_line >= start_line {
-                        self.print_line(current_line, &line, file_pointer);
+                    if current_line >= start_line && current_line <= span.end.line {
+                        self.print_line(current_line, &line, span);
                     }
                     current_line += 1;
                     line.clear();
@@ -171,9 +163,10 @@ impl Reporter {
     }
 
     /// Prints a single line of error.
-    fn print_line(&self, line_number: usize, line_content: &str, file_pointer: FilePointer) {
-        let line_number_width = file_pointer.line.to_string().len();
-        let prefix = if line_number == file_pointer.line {
+    fn print_line(&self, line_number: usize, line_content: &str, span: Span) {
+        let line_number_width = span.end.line.to_string().len();
+        let is_error_line = line_number >= span.start.line && line_number <= span.end.line;
+        let prefix = if is_error_line {
             format!("{}{}>{}", ANSI_BOLD, ANSI_RED, ANSI_RESET)
         } else {
             " ".to_string()
@@ -187,14 +180,36 @@ impl Reporter {
             width = line_number_width
         );
 
-        if line_number == file_pointer.line {
-            let padding = " ".repeat(file_pointer.line_position - 1);
-            let caret = format!("{}{}^{}", ANSI_BOLD, ANSI_RED, ANSI_RESET);
+        if is_error_line {
+            let (padding_start, caret_count) =
+                if line_number == span.start.line && line_number == span.end.line {
+                    // Span covers a single line
+                    let padding = " ".repeat(span.start.column - 1);
+                    let carets = "^".repeat(span.end.column - span.start.column);
+                    (padding, carets)
+                } else if line_number == span.start.line {
+                    // First line of a multi-line span
+                    let padding = " ".repeat(span.start.column - 1);
+                    let carets = "^".repeat(line_content.trim_end().len() - span.start.column + 1);
+                    (padding, carets)
+                } else if line_number == span.end.line {
+                    // Last line of a multi-line span
+                    let padding = " ".repeat(0);
+                    let carets = "^".repeat(span.end.column - 1);
+                    (padding, carets)
+                } else {
+                    // Middle lines of a multi-line span
+                    let padding = " ".repeat(0);
+                    let carets = "^".repeat(line_content.trim_end().len());
+                    (padding, carets)
+                };
+
+            let carets = format!("{}{}{}{}", ANSI_BOLD, ANSI_RED, caret_count, ANSI_RESET);
             eprintln!(
                 " {:>width$} | {}{}",
                 "",
-                padding,
-                caret,
+                padding_start,
+                carets,
                 width = line_number_width
             );
         }

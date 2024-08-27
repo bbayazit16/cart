@@ -19,8 +19,12 @@ impl Parser {
 
         self.consume_fat_arrow()?;
 
-        let body = Box::new(self.parse_expr()?);
+        let body = self.parse_expr();
 
-        Ok(ast::MatchArm { pattern, body })
+        Ok(ast::MatchArm {
+            span: pattern.span().merge(&body.span()),
+            pattern,
+            body,
+        })
     }
 }

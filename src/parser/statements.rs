@@ -1,7 +1,7 @@
 use crate::ast;
 use crate::errors::CompileError;
 use crate::parser::Parser;
-use crate::token::Token;
+use crate::token::TokenType;
 
 impl Parser {
     // statement      → exprStmt
@@ -11,27 +11,33 @@ impl Parser {
     //                | forStmt
     //                | whileStmt
     //                | doWhileStmt ;
-    pub(super) fn parse_stmt(&mut self) -> Result<ast::Stmt, CompileError> {
-        match self.peek()? {
-            Token::Let(..) => Ok(ast::Stmt::Let(Box::new(self.parse_let_stmt()?))),
-            Token::Use(..) => Ok(self.parse_use_stmt()?),
-            Token::Return(..) => Ok(self.parse_return_stmt()?),
-            Token::For(..) => Ok(ast::Stmt::For(Box::new(self.parse_for_stmt()?))),
-            Token::While(..) => Ok(ast::Stmt::While(Box::new(self.parse_while_stmt()?))),
-            Token::Do(..) => Ok(ast::Stmt::DoWhile(Box::new(self.parse_do_while_stmt()?))),
+    pub(super) fn parse_stmt(&mut self) -> ast::Stmt {
+        // self.parse_stmt_()
+        match self.parse_stmt_() {
+            Ok(stmt) => stmt,
+            Err(e) => {
+                self.errors.push(e);
+                self.synchronize();
+                ast::Stmt::NotRecovered
+            }
+        }
+    }
+
+    fn parse_stmt_(&mut self) -> Result<ast::Stmt, CompileError> {
+        match self.peek()?.token_type {
+            TokenType::Let => Ok(ast::Stmt::Let(self.parse_let_stmt()?)),
+            TokenType::Use => Ok(self.parse_use_stmt()?),
+            TokenType::Return => Ok(self.parse_return_stmt()?),
+            TokenType::For => Ok(ast::Stmt::For(self.parse_for_stmt()?)),
+            TokenType::While => Ok(ast::Stmt::While(self.parse_while_stmt()?)),
+            TokenType::Do => Ok(ast::Stmt::DoWhile(self.parse_do_while_stmt()?)),
             _ => self.parse_expr_stmt(),
         }
     }
 
     // letStmt → "let" "mut"? IDENTIFIER ( ":" type )? "=" expression ";" ;
     fn parse_let_stmt(&mut self) -> Result<ast::LetStmt, CompileError> {
-        self.consume_let()?;
-        // if let Err(e) = self.consume_let() {
-        //     self.errors.push(e);
-        //     self.synchronize();
-        //     dbg!(&self.peek());
-        //     // return
-        // }
+        let starting_span = self.consume_let()?.span;
 
         let is_mut = if self.match_mut() {
             self.advance();
@@ -40,7 +46,6 @@ impl Parser {
             false
         };
 
-        // let name = self.consume_identifier()?;
         let name = self.consume_identifier()?;
         let set_type = if self.match_colon() {
             self.advance();
@@ -49,17 +54,27 @@ impl Parser {
             None
         };
 
-        self.consume_equal()?;
+        let eq_span = self.consume_equal()?.span;
 
-        let expr = self.parse_expr()?;
+        let expr = self.parse_expr();
+        if matches!(expr, ast::Expr::NotRecovered) {
+            return Ok(ast::LetStmt {
+                span: starting_span.merge(&eq_span),
+                name,
+                is_mut,
+                set_type,
+                expr: ast::Expr::NotRecovered,
+            });
+        }
 
-        self.consume_semicolon()?;
+        let ending_span = self.consume_semicolon()?.span;
 
         Ok(ast::LetStmt {
             name,
             is_mut,
             set_type,
             expr,
+            span: starting_span.merge(&ending_span),
         })
     }
 
@@ -82,20 +97,20 @@ impl Parser {
 
     // returnStmt     → "return" expression? ";" ;
     fn parse_return_stmt(&mut self) -> Result<ast::Stmt, CompileError> {
-        self.consume_return()?;
+        let return_span = self.consume_return()?.span;
         let expr = if self.match_semicolon() {
             None
         } else {
-            Some(self.parse_expr()?)
+            Some(self.parse_expr())
         };
         self.consume_semicolon()?;
 
-        Ok(ast::Stmt::Return(expr))
+        Ok(ast::Stmt::Return(return_span, expr))
     }
 
     // forStmt        → "for" ( IDENTIFIER | "_" ) "in" expression block ;
     fn parse_for_stmt(&mut self) -> Result<ast::ForStmt, CompileError> {
-        self.consume_for()?;
+        let starting_span = self.consume_for()?.span;
         let iterator = if self.match_underscore() {
             self.advance();
             None
@@ -104,47 +119,50 @@ impl Parser {
         };
 
         self.consume_in()?;
-        let iterable = self.parse_expr()?;
+        let iterable = self.parse_expr();
         let body = self.parse_block()?;
 
         Ok(ast::ForStmt {
+            span: starting_span.merge(&body.span),
             iterator,
             iterable,
-            body: Box::new(body),
+            body,
         })
     }
 
     // whileStmt      → "while" expression block ;
     fn parse_while_stmt(&mut self) -> Result<ast::WhileStmt, CompileError> {
-        self.consume_while()?;
-        let condition = self.parse_expr()?;
+        let starting_span = self.consume_while()?.span;
+        let condition = self.parse_expr();
         let body = self.parse_block()?;
         Ok(ast::WhileStmt {
-            body: Box::new(body),
+            span: starting_span.merge(&body.span),
+            body,
             condition,
         })
     }
 
     // doWhileStmt    → "do" block "while" expression ";" ;
     fn parse_do_while_stmt(&mut self) -> Result<ast::DoWhileStmt, CompileError> {
-        self.consume_do()?;
+        let starting_span = self.consume_do()?.span;
         let body = self.parse_block()?;
         self.consume_while()?;
 
-        let condition = self.parse_expr()?;
+        let condition = self.parse_expr();
 
-        self.consume_semicolon()?;
+        let ending_span = self.consume_semicolon()?.span;
 
         Ok(ast::DoWhileStmt {
-            body: Box::new(body),
+            span: starting_span.merge(&ending_span),
+            body,
             condition,
         })
     }
 
     // exprStmt       → expression ";" ;
     fn parse_expr_stmt(&mut self) -> Result<ast::Stmt, CompileError> {
-        let expr = self.parse_expr()?;
+        let expr = self.parse_expr();
         self.consume_semicolon()?;
-        Ok(ast::Stmt::Expression(Box::new(expr)))
+        Ok(ast::Stmt::Expression(expr))
     }
 }

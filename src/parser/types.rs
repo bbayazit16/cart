@@ -7,15 +7,16 @@ impl Parser {
     //                | "(" type? ")"
     pub(super) fn parse_type(&mut self) -> Result<ast::Type, CompileError> {
         if self.match_lparen() {
-            self.advance();
+            let l_paren_span = self.advance().span;
             if self.match_rparen() {
-                self.advance();
+                let r_paren_span = self.advance().span;
                 // If (), return empty type
-                Ok(ast::Type::Empty)
+                Ok(ast::Type::Empty(l_paren_span.merge(&r_paren_span)))
             } else {
                 // Return the inner type from the nested type
                 let inner_type = self.parse_type()?;
-                self.consume_rparen()?;
+                // Span isn't really important here. If an error occurs in the inner type,
+                // it will be reported accordingly. Parens are just for grouping.
                 Ok(inner_type)
             }
         } else {
@@ -25,8 +26,12 @@ impl Parser {
                 // IDENTIFIER genericsArgs
                 self.advance();
                 let generic_list = self.parse_typelist()?;
-                self.consume_rangle()?;
-                Ok(ast::Type::Generic(identifier, generic_list))
+                let right_angle_span = self.consume_rangle()?.span;
+                Ok(ast::Type::Generic(
+                    identifier.span.merge(&right_angle_span),
+                    identifier,
+                    generic_list,
+                ))
             } else {
                 Ok(ast::Type::Simple(identifier))
             }

@@ -1,3 +1,5 @@
+use crate::token::TokenType;
+
 /// The type of variable or expression in the HIR.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum Type {
@@ -160,36 +162,34 @@ impl BinaryOp {
     }
 }
 
-impl From<&str> for BinaryOp {
-    // TODO: Better error handling
-    fn from(op: &str) -> Self {
-        match op {
-            "+" => BinaryOp::Add,
-            "-" => BinaryOp::Sub,
-            "*" => BinaryOp::Mul,
-            "/" => BinaryOp::Div,
-            // TODO: Add exponentiation
-            "%" => BinaryOp::Mod,
-            "&&" => BinaryOp::And,
-            "||" => BinaryOp::Or,
-            "==" => BinaryOp::Eq,
-            "!=" => BinaryOp::Neq,
-            "<" => BinaryOp::Lt,
-            ">" => BinaryOp::Gt,
-            "<=" => BinaryOp::Le,
-            ">=" => BinaryOp::Ge,
-            other => unimplemented!("Unsupported binary operator: {}", other),
+impl From<&TokenType> for BinaryOp {
+    fn from(value: &TokenType) -> Self {
+        match value {
+            TokenType::Plus => BinaryOp::Add,
+            TokenType::Minus => BinaryOp::Sub,
+            TokenType::Star => BinaryOp::Mul,
+            TokenType::Slash => BinaryOp::Div,
+            // TODO: Exp
+            TokenType::Percent => BinaryOp::Mod,
+            TokenType::Ampersand => BinaryOp::And,
+            TokenType::Pipe => BinaryOp::Or,
+            TokenType::EqualEqual => BinaryOp::Eq,
+            TokenType::BangEqual => BinaryOp::Neq,
+            TokenType::LeftAngle => BinaryOp::Lt,
+            TokenType::RightAngle => BinaryOp::Gt,
+            TokenType::LessEqual => BinaryOp::Le,
+            TokenType::GreaterEqual => BinaryOp::Ge,
+            other => unimplemented!("Unsupported binary operator: {:?}", other),
         }
     }
 }
 
-impl From<&str> for UnaryOp {
-    // TODO: Better error handling
-    fn from(op: &str) -> Self {
-        match op {
-            "-" => UnaryOp::Neg,
-            "!" => UnaryOp::Not,
-            other => unimplemented!("Unsupported unary operator: {}", other),
+impl From<&TokenType> for UnaryOp {
+    fn from(value: &TokenType) -> Self {
+        match value {
+            TokenType::Minus => UnaryOp::Neg,
+            TokenType::Bang => UnaryOp::Not,
+            other => unimplemented!("Unsupported unary operator: {:?}", other),
         }
     }
 }

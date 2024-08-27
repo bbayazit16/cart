@@ -21,7 +21,7 @@ use crate::ast;
 use crate::context::FileContext;
 use crate::errors::CompileError;
 use crate::lexer::Lexer;
-use crate::token::Token;
+use crate::token::{Token, TokenType};
 use std::collections::VecDeque;
 
 mod blocks;
@@ -73,17 +73,9 @@ impl Parser {
     pub(crate) fn parse(&mut self) -> ast::Program {
         let mut declarations = Vec::new();
         while !self.at_end() {
-            let start_position = self.peek().unwrap().get_file_pointer();
-            match self.parse_declaration() {
-                Ok(declaration) => declarations.push(declaration),
-                Err(e) => {
-                    self.errors.push(e);
-                    self.recover_to_position(start_position).unwrap();
-                    self.synchronize();
-                }
-            }
-            self.clear_queue();
+            declarations.push(self.parse_declaration());
         }
+
         for error in self.errors.iter() {
             self.lexer.report_error(error);
         }
@@ -93,26 +85,28 @@ impl Parser {
     /// Synchronizes the parser into the next correct position,
     /// which would be the point where a major construct is encountered.
     fn synchronize(&mut self) {
-        // let previous = self.advance();
-
         while !self.at_end() {
-            // if matches!(previous, Token::Semicolon(..)) { return };
             if self.match_semicolon() {
                 self.advance();
                 return;
             }
             match self.peek() {
-                Ok(Token::Struct(..))
-                | Ok(Token::Enum(..))
-                | Ok(Token::Func(..))
-                | Ok(Token::Let(..))
-                | Ok(Token::For(..))
-                | Ok(Token::While(..))
-                | Ok(Token::If(..))
-                | Ok(Token::Return(..)) => return,
-                _ => {
-                    self.advance();
-                }
+                Ok(peeked) => match peeked.token_type {
+                    TokenType::Struct
+                    | TokenType::Enum
+                    | TokenType::Func
+                    | TokenType::Let
+                    | TokenType::For
+                    | TokenType::While
+                    | TokenType::If
+                    | TokenType::Return => {
+                        return;
+                    }
+                    _ => {
+                        self.advance();
+                    }
+                },
+                Err(_) => return,
             }
         }
     }

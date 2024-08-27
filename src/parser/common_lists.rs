@@ -33,10 +33,10 @@ impl Parser {
 
     // arguments      → expression ( "," expression )* ;
     pub(super) fn parse_arguments(&mut self) -> Result<Vec<ast::Expr>, CompileError> {
-        let mut arguments = vec![self.parse_expr()?];
+        let mut arguments = vec![self.parse_expr()];
         while self.match_comma() {
             self.advance();
-            arguments.push(self.parse_expr()?);
+            arguments.push(self.parse_expr());
         }
         Ok(arguments)
     }

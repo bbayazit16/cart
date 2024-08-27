@@ -1,4 +1,3 @@
-use crate::ast::lowering::lower;
 use crate::ast::Program;
 use crate::cli::CommonOptions;
 use crate::codegen::CodeGen;
@@ -14,8 +13,6 @@ use std::path::{Path, PathBuf};
 /// - `run` - If true, runs the executable after compilation.
 /// - `options` - The compiler options.
 pub(crate) fn compile(ast: &mut Program, run: bool, options: &CommonOptions) {
-    lower(ast);
-
     let context = inkwell::context::Context::create();
 
     let mut codegen = CodeGen::new(&context, Some(&options.entrypoint));

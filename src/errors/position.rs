@@ -1,63 +1,32 @@
-use crate::context::FilePointer;
+use crate::context::Span;
 use crate::errors::{SyntaxError, TypeError};
 
-pub(crate) trait Position {
-    /// Return the file position of the error.
-    fn file_position(&self) -> FilePointer;
-}
-
-impl Position for SyntaxError {
-    fn file_position(&self) -> FilePointer {
+impl SyntaxError {
+    /// Return the span of the error.
+    pub(crate) fn span(&self) -> Span {
         match self {
-            SyntaxError::UnterminatedStringLiteral {
-                file_pointer: file_position,
-            }
-            | SyntaxError::UnterminatedComment {
-                file_pointer: file_position,
-            }
-            | SyntaxError::UnexpectedCharacter {
-                file_pointer: file_position,
-                ..
-            }
-            | SyntaxError::ExpectedDifferentCharacter {
-                file_pointer: file_position,
-                ..
-            }
-            | SyntaxError::InvalidNumberLiteral {
-                file_pointer: file_position,
-                ..
-            } => *file_position,
+            SyntaxError::UnterminatedStringLiteral { span }
+            | SyntaxError::UnterminatedComment { span }
+            | SyntaxError::UnexpectedCharacter { span, .. }
+            | SyntaxError::ExpectedDifferent { span, .. }
+            | SyntaxError::InvalidNumberLiteral { span, .. } => *span,
         }
     }
 }
 
-impl Position for TypeError {
-    fn file_position(&self) -> FilePointer {
+impl TypeError {
+    /// Return the span of the error.
+    pub(crate) fn span(&self) -> Span {
         match self {
-            TypeError::IncorrectType {
-                file_pointer: file_position,
-                ..
-            } => *file_position,
-            TypeError::UndefinedVariable {
-                file_pointer: file_position,
-                ..
-            } => *file_position,
-            TypeError::UndefinedFunction {
-                file_pointer: file_position,
-                ..
-            } => *file_position,
-            TypeError::IndexingNonArray {
-                file_pointer: file_position,
-                ..
-            } => *file_position,
-            TypeError::BinaryOpError {
-                file_pointer: file_position,
-                ..
-            } => *file_position,
-            TypeError::UnitAssignment {
-                file_pointer: file_position,
-                ..
-            } => *file_position,
+            TypeError::IncorrectType { span, .. }
+            | TypeError::UndefinedVariable { span, .. }
+            | TypeError::UndefinedFunction { span, .. }
+            | TypeError::IndexingNonArray { span, .. }
+            | TypeError::BinaryOpError { span, .. }
+            | TypeError::UnitAssignment { span }
+            | TypeError::IncorrectStructLiteral { span, .. }
+            | TypeError::UnknownStructField { span, .. }
+            | TypeError::ImmutableAssignment { span, .. } => *span,
         }
     }
 }

@@ -1,3 +1,4 @@
+use crate::context::Span;
 use crate::errors::{CompileError, SyntaxError};
 use crate::lexer::{Lexer, BUFFER_CAPACITY};
 use std::io::Read;
@@ -40,8 +41,8 @@ impl Lexer {
             .chars()
             .next()?;
         self.buffer_position += ch.len_utf8();
-        self.file_pointer.file_position += ch.len_utf8();
-        self.file_pointer.line_position += ch.len_utf8();
+        self.position.offset += ch.len_utf8();
+        self.position.column += ch.len_utf8();
         Some(ch)
     }
 
@@ -120,8 +121,8 @@ impl Lexer {
                 }
                 Some('\n') => {
                     self.advance();
-                    self.file_pointer.line += 1;
-                    self.file_pointer.line_position = 1;
+                    self.position.line += 1;
+                    self.position.column = 1;
                 }
                 Some('/') => {
                     if self.match_next_next('/') {
@@ -140,15 +141,16 @@ impl Lexer {
                                     break;
                                 }
                             } else if c == '\n' {
-                                self.file_pointer.line += 1;
-                                self.file_pointer.line_position = 1;
+                                self.position.line += 1;
+                                self.position.column = 1;
                             }
                         }
                         if self.peek().is_none() && !was_broken {
-                            let e = CompileError::Syntax(SyntaxError::UnterminatedComment {
-                                file_pointer: self.file_pointer,
-                            });
-                            self.report_error(&e);
+                            self.report_error(&CompileError::Syntax(
+                                SyntaxError::UnterminatedComment {
+                                    span: Span::single(self.position),
+                                },
+                            ));
                         }
                     } else {
                         // Single '/'

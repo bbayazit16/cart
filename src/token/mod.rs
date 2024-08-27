@@ -2,15 +2,33 @@
 //! used across the compiler.
 //!
 //! Tokens are first generated in the lexer, via reading a source file.
-
-// This is needed to allow snake_case variants in the enum.
-// Without this, Identifier(String) would be a warning.
-#![allow(non_snake_case)]
-
 mod token_macros;
-use crate::*;
 
-define_tokens_with_display! {
+use crate::context::Span;
+
+/// The `Token` struct represents a single token in the source code.
+/// It contains the span of the token in the source file and the type of the token.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Token {
+    pub(crate) token_type: TokenType,
+    pub(crate) span: Span,
+}
+
+impl Token {
+    /// Return a reference to the value of the token, if it is a literal or an identifier.
+    pub(crate) fn literal_value(&self) -> Option<&String> {
+        match &self.token_type {
+            TokenType::Identifier(value) => Some(value),
+            TokenType::String(value) => Some(value),
+            TokenType::Integer(value) => Some(value),
+            TokenType::Float(value) => Some(value),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum TokenType {
     // Basic Tokens
     LeftParen,    // (
     RightParen,   // )
@@ -58,7 +76,8 @@ define_tokens_with_display! {
     // Literals
     Identifier(String),
     String(String),
-    Number(String, bool),
+    Integer(String),
+    Float(String),
 
     // Keywords
     Self_,      // self
@@ -86,5 +105,5 @@ define_tokens_with_display! {
     Implements, // implements
     Do,         // do
     In,         // in
-    Eof         // End of file
+    Eof,        // End of file
 }

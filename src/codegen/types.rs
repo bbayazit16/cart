@@ -1,19 +1,19 @@
-use crate::ast::Type;
-use crate::token::Token;
+use crate::ast;
+use crate::token::TokenType;
 use inkwell::context::Context;
 use inkwell::types::{
     AnyType, AnyTypeEnum, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType,
 };
 
-impl Type {
+impl ast::Type {
     /// Converts the type to an LLVM BasicTypeEnum. Returns None if the type is void, ().
     pub(super) fn to_basic_type_enum<'ctx>(
         &self,
         ctx: &'ctx Context,
     ) -> Option<BasicTypeEnum<'ctx>> {
         match self {
-            Type::Simple(tok) => match tok {
-                Token::Identifier(_, s) => Some(match s.as_str() {
+            ast::Type::Simple(tok) => match &tok.token_type {
+                TokenType::Identifier(s) => Some(match s.as_str() {
                     "i32" => ctx.i32_type().as_basic_type_enum(),
                     "i64" => ctx.i64_type().as_basic_type_enum(),
                     "f32" => ctx.f32_type().as_basic_type_enum(),
@@ -22,7 +22,7 @@ impl Type {
                 }),
                 _ => todo!(),
             },
-            Type::Empty => None,
+            ast::Type::Empty(_) => None,
             _ => todo!(),
         }
     }

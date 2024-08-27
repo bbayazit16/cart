@@ -17,14 +17,14 @@ use inkwell::types::BasicType;
 use inkwell::values::PointerValue;
 use inkwell::AddressSpace;
 
-mod cart_string;
+// mod cart_string;
 mod cart_type;
 pub(crate) mod compiler;
-mod declarations;
-mod expressions;
-mod statements;
+// mod declarations;
+// mod expressions;
+// mod statements;
 pub(crate) mod symbol_table;
-mod types;
+// mod types;
 
 /// Codegen struct is responsible for generating LLVM IR from the AST.
 /// The struct contains the context, module, builder, and the symbol table.
@@ -112,7 +112,8 @@ impl<'ctx> CodeGen<'ctx> {
     /// Returns a reference to the module.
     pub(crate) fn generate(&mut self, program: &Program) -> &Module<'ctx> {
         for declaration in program.declarations.iter() {
-            self.generate_declaration(declaration);
+            todo!();
+            // self.generate_declaration(declaration);
         }
         &self.module
     }

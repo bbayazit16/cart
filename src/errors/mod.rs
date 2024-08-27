@@ -6,83 +6,69 @@ mod help;
 mod position;
 
 pub(crate) use help::Help;
-pub(crate) use position::Position;
 
-use crate::context::FilePointer;
+use crate::context::Span;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub(crate) enum SyntaxError {
-    #[error("unterminated string literal at {file_pointer}")]
-    UnterminatedStringLiteral { file_pointer: FilePointer },
+    #[error("unterminated string literal")]
+    UnterminatedStringLiteral { span: Span },
 
-    #[error("unterminated comment at {file_pointer}")]
-    UnterminatedComment { file_pointer: FilePointer },
+    #[error("unterminated comment")]
+    UnterminatedComment { span: Span },
 
-    #[error("unexpected character '{character}' at {file_pointer}")]
-    UnexpectedCharacter {
-        file_pointer: FilePointer,
-        character: char,
-    },
+    #[error("unexpected character '{character}'")]
+    UnexpectedCharacter { span: Span, character: char },
 
-    #[error("expected '{expected}' at {file_pointer}")]
-    ExpectedDifferentCharacter {
-        file_pointer: FilePointer,
+    #[error("expected '{expected}'")]
+    ExpectedDifferent {
+        span: Span,
         expected: String,
     },
 
-    #[error("invalid number literal '{literal}' at {file_pointer}")]
-    InvalidNumberLiteral {
-        file_pointer: FilePointer,
-        literal: String,
-    },
+    #[error("invalid number literal '{literal}'")]
+    InvalidNumberLiteral { span: Span, literal: String },
 }
 
 #[derive(Error, Debug)]
 pub(crate) enum TypeError {
-    #[error("found type '{incorrect}', expected '{expected}' at {file_pointer}")]
+    #[error("found type '{incorrect}', expected '{expected}'")]
     IncorrectType {
-        file_pointer: FilePointer,
+        span: Span,
         incorrect: String,
         expected: String,
     },
 
-    #[error("undefined variable '{variable}' at {file_pointer}")]
-    UndefinedVariable {
-        file_pointer: FilePointer,
-        variable: String,
-    },
-    
-    #[error("undefined function '{function}' at {file_pointer}")]
-    UndefinedFunction {
-        file_pointer: FilePointer,
-        function: String,
-    },
+    #[error("undefined variable '{variable}'")]
+    UndefinedVariable { span: Span, variable: String },
 
-    #[error("attempted to index type '{found_type}' at {file_pointer}")]
-    IndexingNonArray {
-        file_pointer: FilePointer,
-        found_type: String,
-    },
+    #[error("undefined function '{function}'")]
+    UndefinedFunction { span: Span, function: String },
 
-    #[error("binary operation '{op}' between '{left}' and '{right}' at {file_pointer} are incompatible")]
+    #[error("attempted to index type '{found_type}'")]
+    IndexingNonArray { span: Span, found_type: String },
+
+    #[error("binary operation '{op}' between '{left}' and '{right}' are incompatible")]
     BinaryOpError {
+        span: Span,
         op: String,
         left: String,
         right: String,
-        file_pointer: FilePointer,
     },
-    
-    #[error("unit type `()` assignments to variables are forbidden. Assignment found at {file_pointer}")]
-    UnitAssignment {
-        file_pointer: FilePointer,
-    },
-}
 
-// #[derive(Error, Debug)]
-// #[allow(unused)]
-// pub(crate) enum ResolutionError {
-// }
+    #[error("unit type `()` assignments to variables are forbidden")]
+    UnitAssignment { span: Span },
+    
+    #[error("incorrect struct literal")]
+    IncorrectStructLiteral { span: Span },
+    
+    #[error("unknown struct field '{field}' at struct '{struct_name}'")]
+    UnknownStructField { span: Span, field: String, struct_name: String },
+    
+    #[error("assignment to immutable variable '{variable}'")]
+    ImmutableAssignment { span: Span, variable: String },
+}
 
 #[derive(Error, Debug)]
 pub(crate) enum CompileError {

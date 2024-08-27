@@ -7,7 +7,7 @@ mod alpha;
 mod common;
 mod recovery;
 
-use crate::context::{FileContext, FilePointer};
+use crate::context::{FileContext, Position};
 use crate::errors::CompileError;
 use crate::token::Token;
 
@@ -43,7 +43,7 @@ const BUFFER_CAPACITY: usize = 2048;
 pub(crate) struct Lexer {
     buffer: String,
     context: FileContext,
-    file_pointer: FilePointer,
+    position: Position,
     buffer_position: usize,
     buffer_start: usize,
     buffer_eof: bool,
@@ -55,7 +55,7 @@ impl Lexer {
         Lexer {
             buffer: String::with_capacity(BUFFER_CAPACITY),
             context,
-            file_pointer: FilePointer::default(),
+            position: Position::default(),
             buffer_position: 0,
             buffer_start: 0,
             buffer_eof: false,
