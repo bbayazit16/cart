@@ -1,18 +1,5 @@
-use crate::codegen::cart_type::CartType;
-use inkwell::types::StructType;
-use inkwell::values::{BasicValueEnum, PointerValue};
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
-
-/// Represents a variable in the codegen.
-/// The variable can either be mutable or immutable.
-#[derive(Debug, Clone)]
-pub(super) enum Variable<'ctx> {
-    Mutable(CartType<'ctx>, PointerValue<'ctx>),
-    Immutable(CartType<'ctx>, PointerValue<'ctx>),
-    ImmutableParam(CartType<'ctx>, BasicValueEnum<'ctx>),
-    StructDecl(StructType<'ctx>, HashMap<String, (usize, CartType<'ctx>)>),
-}
 
 /// SymbolTable struct represents the symbol table in the codegen.
 /// The symbol table is used to store variables and their values.

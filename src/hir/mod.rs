@@ -9,14 +9,15 @@
 
 use crate::codegen::symbol_table::{SymbolSet, SymbolTable};
 use crate::errors::CompileError;
+// use crate::hir::hir_type::Type;
 use crate::reporter::Reporter;
 use std::collections::HashMap;
-use crate::hir::hir_type::Type;
 
-mod type_check;
-mod errors;
 mod display;
-mod hir_type;
+mod errors;
+pub(crate) mod hir_type;
+mod lowering;
+mod type_check;
 
 pub(crate) use hir_type::*;
 
@@ -42,13 +43,13 @@ impl TypeChecker {
             "print_number".to_string(),
             FunctionSignature {
                 name: "print_number".to_string(),
-                params: vec![Type::Int],
+                params: vec![("number".into(), Type::Int)],
                 return_type: Type::Unit,
                 generic_declarations: Vec::new(),
                 is_self: false,
             },
         );
-        
+
         Self {
             reporter,
             errors: Vec::new(),
@@ -92,7 +93,7 @@ pub(crate) struct Function {
 #[derive(Debug, Clone)]
 pub(crate) struct FunctionSignature {
     pub(crate) name: String,
-    pub(crate) params: Vec<Type>,
+    pub(crate) params: Vec<(String, Type)>,
     pub(crate) return_type: Type,
     pub(crate) generic_declarations: Vec<Type>,
     pub(crate) is_self: bool,
@@ -103,7 +104,6 @@ pub(crate) enum Statement {
     Expression(Expression),
     Let {
         name: String,
-        is_mut: bool,
         ty: Type,
         value: Expression,
     },
@@ -151,7 +151,6 @@ pub(crate) enum Expression {
     },
     Variable {
         name: String,
-        is_mut: bool,
         ty: Type,
     },
     Call {

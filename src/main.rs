@@ -38,7 +38,7 @@ fn main() {
             let context = FileContext::try_new(&options.input).unwrap();
 
             let start = std::time::Instant::now();
-            let mut program = Parser::new(context).parse();
+            let program = Parser::new(context).parse();
             let end = std::time::Instant::now();
 
             if options.time_compilation {
@@ -49,19 +49,16 @@ fn main() {
             }
 
             let reporter = reporter::Reporter::new(&options.input);
-            let hir = hir::TypeChecker::new(reporter).resolve_types(&program);
-            dbg!(&hir);
-
-            // std::process::exit(0);
-
+            let mut hir = hir::TypeChecker::new(reporter).resolve_types(&program);
+            
             let start = std::time::Instant::now();
             compile(
-                &mut program,
+                &mut hir,
                 matches!(cli.command, Commands::Run(_)),
                 options,
             );
             let end = std::time::Instant::now();
-
+            
             if options.time_compilation {
                 println!(
                     "Compilation complete in {}ms",

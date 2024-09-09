@@ -1,30 +1,29 @@
-//! This module is responsible for generating LLVM IR from the AST.
-//!
-//! `ast_codegen`  is responsible for generating LLVM IR from the AST.
-//!
+//! This module is responsible for generating LLVM IR from the HIR.
 //! The `CodeGen` struct is the main struct that is used to generate the LLVM IR.
-//!
-//! This module additionally contains the symbol table and its implementation, as well
-//! as the definition of a Variable for the codegen.
-//! The symbol table is used to store variables and their values.
+//! 
+//! At this point, the types must already be verified and the HIR is verbose enough
+//! to generate the LLVM IR.
+//! 
+//! The module provides the definition for symbol table, used to store variables
+//! and their values during codegen.
 
-use crate::ast::Program;
-use crate::codegen::symbol_table::{SymbolTable, Variable};
+use crate::codegen::symbol_table::SymbolTable;
+use crate::codegen::value::Value;
+use crate::hir;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::BasicType;
 use inkwell::values::PointerValue;
-use inkwell::AddressSpace;
 
 // mod cart_string;
-mod cart_type;
 pub(crate) mod compiler;
-// mod declarations;
-// mod expressions;
-// mod statements;
+mod value;
+mod declarations;
+mod expressions;
+mod statements;
 pub(crate) mod symbol_table;
-// mod types;
+mod types;
 
 /// Codegen struct is responsible for generating LLVM IR from the AST.
 /// The struct contains the context, module, builder, and the symbol table.
@@ -35,7 +34,7 @@ pub(crate) struct CodeGen<'ctx> {
     context: &'ctx Context,
     module: Module<'ctx>,
     builder: Builder<'ctx>,
-    symbol_table: SymbolTable<Variable<'ctx>>,
+    symbol_table: SymbolTable<Value<'ctx>>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -70,50 +69,49 @@ impl<'ctx> CodeGen<'ctx> {
                 .fn_type(&[context.i32_type().into()], false),
             None,
         );
-        module.add_function(
-            "print_string",
-            context
-                .void_type()
-                .fn_type(&[context.ptr_type(AddressSpace::default()).into()], false),
-            None,
-        );
-        module.add_function(
-            "create_array",
-            context
-                .ptr_type(AddressSpace::default())
-                .fn_type(&[context.i32_type().into()], false),
-            None,
-        );
-        module.add_function(
-            "push_to_array",
-            context.void_type().fn_type(
-                &[
-                    context.ptr_type(AddressSpace::default()).into(),
-                    context.i32_type().into(),
-                ],
-                false,
-            ),
-            None,
-        );
-        module.add_function(
-            "push_to_array_multiple",
-            context.void_type().fn_type(
-                &[
-                    context.ptr_type(AddressSpace::default()).into(),
-                    context.i32_type().into(),
-                ],
-                false,
-            ),
-            None,
-        );
+        // module.add_function(
+        //     "print_string",
+        //     context
+        //         .void_type()
+        //         .fn_type(&[context.ptr_type(AddressSpace::default()).into()], false),
+        //     None,
+        // );
+        // module.add_function(
+        //     "create_array",
+        //     context
+        //         .ptr_type(AddressSpace::default())
+        //         .fn_type(&[context.i32_type().into()], false),
+        //     None,
+        // );
+        // module.add_function(
+        //     "push_to_array",
+        //     context.void_type().fn_type(
+        //         &[
+        //             context.ptr_type(AddressSpace::default()).into(),
+        //             context.i32_type().into(),
+        //         ],
+        //         false,
+        //     ),
+        //     None,
+        // );
+        // module.add_function(
+        //     "push_to_array_multiple",
+        //     context.void_type().fn_type(
+        //         &[
+        //             context.ptr_type(AddressSpace::default()).into(),
+        //             context.i32_type().into(),
+        //         ],
+        //         false,
+        //     ),
+        //     None,
+        // );
     }
 
     /// Generate the LLVM IR from the program AST.
     /// Returns a reference to the module.
-    pub(crate) fn generate(&mut self, program: &Program) -> &Module<'ctx> {
+    pub(crate) fn generate(&mut self, program: &hir::Program) -> &Module<'ctx> {
         for declaration in program.declarations.iter() {
-            todo!();
-            // self.generate_declaration(declaration);
+            self.generate_declaration(declaration);
         }
         &self.module
     }

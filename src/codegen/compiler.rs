@@ -1,6 +1,6 @@
-use crate::ast::Program;
 use crate::cli::CommonOptions;
 use crate::codegen::CodeGen;
+use crate::hir::Program;
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
@@ -8,15 +8,15 @@ use std::path::{Path, PathBuf};
 
 /// Compiles the program into an executable.
 /// Arguments:
-/// - `ast` - The program AST.
+/// - `hir` - The program HIR.
 /// - `context` - The inkwell context.
 /// - `run` - If true, runs the executable after compilation.
 /// - `options` - The compiler options.
-pub(crate) fn compile(ast: &mut Program, run: bool, options: &CommonOptions) {
+pub(crate) fn compile(hir: &mut Program, run: bool, options: &CommonOptions) {
     let context = inkwell::context::Context::create();
 
     let mut codegen = CodeGen::new(&context, Some(&options.entrypoint));
-    let module = codegen.generate(ast);
+    let module = codegen.generate(hir);
 
     Target::initialize_native(&InitializationConfig::default())
         .expect("Failed to initialize native target");

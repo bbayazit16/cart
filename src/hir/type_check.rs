@@ -72,7 +72,12 @@ impl<'a> TypeChecker {
         let params = function_decl
             .params
             .iter()
-            .map(|p| self.resolve_type(&p.param_type))
+            .map(|p| {
+                (
+                    token_value!(p.name, Identifier),
+                    self.resolve_type(&p.param_type),
+                )
+            })
             .collect();
         let return_type = self.resolve_type(&function_decl.return_type);
 
@@ -122,7 +127,7 @@ impl<'a> TypeChecker {
                 }
             }
         }
-        let body = self.resolve_block(&function_decl.body, Some(&function_decl.params));
+        let body = self.resolve_block(&function_decl.body, Some(signature.params.clone()));
         self.types.end_scope();
 
         if body.return_type != signature.return_type {
@@ -263,7 +268,7 @@ impl<'a> TypeChecker {
     fn resolve_block(
         &mut self,
         block: &'a ast::Block,
-        params: Option<&'a Vec<ast::Parameter>>,
+        params: Option<Vec<(String, Type)>>,
     ) -> hir::Block {
         self.types.begin_scope();
         self.functions.begin_scope();
@@ -272,14 +277,10 @@ impl<'a> TypeChecker {
         self.struct_generics.begin_scope();
 
         if let Some(params) = params {
-            for param in params {
-                let resolved_type = self.resolve_type(&param.param_type);
-                self.types.add(
-                    token_value!(&param.name, Identifier),
-                    // The is_mutable flag is always true for function parameters,
-                    // and params are only passed when a function is being resolved.
-                    (resolved_type, true),
-                );
+            for (name, ty) in params {
+                // The is_mutable flag is always true for function parameters,
+                // and params are only passed when a function is being resolved.
+                self.types.add(name, (ty, true));
             }
         }
 
@@ -348,12 +349,7 @@ impl<'a> TypeChecker {
 
         self.types.add(name.to_string(), (ty.clone(), is_mut));
 
-        hir::Statement::Let {
-            name,
-            is_mut,
-            ty,
-            value,
-        }
+        hir::Statement::Let { name, ty, value }
     }
 
     /// Resolve the types of the given expression.
@@ -414,10 +410,9 @@ impl<'a> TypeChecker {
     fn resolve_variable(&mut self, var: &'a Token) -> hir::Expression {
         let variable_name = token_value!(var);
         let ty = self.types.get(&variable_name);
-        if let Some((ty, is_mut)) = ty {
+        if let Some((ty, _)) = ty {
             hir::Expression::Variable {
                 name: variable_name,
-                is_mut: *is_mut,
                 ty: ty.clone(),
             }
         } else {
@@ -425,7 +420,6 @@ impl<'a> TypeChecker {
             // TODO: Check this approach
             hir::Expression::Variable {
                 name: variable_name,
-                is_mut: false,
                 ty: Type::Unit,
             }
         }
@@ -541,7 +535,12 @@ impl<'a> TypeChecker {
 
         let function_signature = match self.functions.get(&callee) {
             Some(signature) => {
-                let signatures_match = Self::verify_fn_call_types(&signature.params, &arg_types);
+                let signature_types = signature
+                    .params
+                    .iter()
+                    .map(|(_, t)| t.clone())
+                    .collect::<Vec<Type>>();
+                let signatures_match = Self::verify_fn_call_types(&signature_types, &arg_types);
                 if let Some((expected, found)) = signatures_match.err() {
                     self.errors.push(
                         TypeError::IncorrectType {
@@ -609,8 +608,12 @@ impl<'a> TypeChecker {
             });
 
         let method_return_type = if let Some(signature) = &method_signature {
-            if let Err((expected, found)) =
-                Self::verify_fn_call_types(&signature.params, &arg_types)
+            let signature_types = signature
+                .params
+                .iter()
+                .map(|(_, t)| t.clone())
+                .collect::<Vec<Type>>();
+            if let Err((expected, found)) = Self::verify_fn_call_types(&signature_types, &arg_types)
             {
                 self.report_type_error(expected, found, method_call.span);
             }
