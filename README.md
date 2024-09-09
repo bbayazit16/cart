@@ -8,11 +8,33 @@ code. The object file is linked via `cc`. Unlike Rust or other low-level languag
 a systems programming language, but rather a high level language (on the level of Java) that compiles to native code.
 For this reason, Cart is a garbage collected and simple-to-use language.
 
-For the grammar, see [grammar](grammar).
+Example Syntax: Nth Fibonacci Number
+
+```cart
+// Last value of a block automatically corresponds to the return value
+func fib(n: int) -> int {
+    if n <= 2 {
+        1
+    } else {
+        fib(n - 1) + fib(n - 2)
+    }
+}
+
+func main() {
+    let n: int = 10;
+    // Or use auto type inference
+    let result = fib(n);
+    // Exits program with result: No need for a semicolon if
+    // it is the last expression in a block.
+    result
+}
+
+```
+
+For the formal grammar, see [grammar](grammar).
 
 > [!NOTE]
 > The language is not intended to be a replacement for any language, and should not be used seriously.
-> This is just a fun project I am working on.
 
 TODO:
 
