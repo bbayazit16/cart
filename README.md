@@ -6,7 +6,7 @@ Cart is a simple rust-like programming language with a compiler written in Rust.
 The language is compiled into LLVM IR via [Inkwell](https://github.com/TheDan64/inkwell), and then to native machine
 code. The object file is linked via `cc`. Unlike Rust or other low-level languages, the language is intended not to be
 a systems programming language, but rather a high level language (on the level of Java) that compiles to native code.
-For this reason, Cart is a garbage collected and simple-to-use language.
+For this reason, Cart is garbage collected and simple-to-use language.
 
 Example Syntax: Nth Fibonacci Number
 
