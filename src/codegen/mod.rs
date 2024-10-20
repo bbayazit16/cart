@@ -1,9 +1,9 @@
 //! This module is responsible for generating LLVM IR from the HIR.
 //! The `CodeGen` struct is the main struct that is used to generate the LLVM IR.
-//! 
+//!
 //! At this point, the types must already be verified and the HIR is verbose enough
 //! to generate the LLVM IR.
-//! 
+//!
 //! The module provides the definition for symbol table, used to store variables
 //! and their values during codegen.
 
@@ -13,17 +13,23 @@ use crate::hir;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
-use inkwell::types::BasicType;
+use inkwell::types::{BasicType, BasicTypeEnum, StructType};
 use inkwell::values::PointerValue;
+use std::collections::HashMap;
 
 // mod cart_string;
 pub(crate) mod compiler;
-mod value;
 mod declarations;
 mod expressions;
 mod statements;
 pub(crate) mod symbol_table;
 mod types;
+mod value;
+
+type StructDefinition<'ctx> = (
+    StructType<'ctx>,
+    HashMap<String, (usize, BasicTypeEnum<'ctx>)>,
+);
 
 /// Codegen struct is responsible for generating LLVM IR from the AST.
 /// The struct contains the context, module, builder, and the symbol table.
@@ -35,6 +41,8 @@ pub(crate) struct CodeGen<'ctx> {
     module: Module<'ctx>,
     builder: Builder<'ctx>,
     symbol_table: SymbolTable<Value<'ctx>>,
+    loaded_symbol_table: SymbolTable<Value<'ctx>>,
+    struct_definition_table: SymbolTable<StructDefinition<'ctx>>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -56,6 +64,8 @@ impl<'ctx> CodeGen<'ctx> {
             module,
             builder,
             symbol_table: SymbolTable::default(),
+            loaded_symbol_table: SymbolTable::default(),
+            struct_definition_table: SymbolTable::default(),
         }
     }
 

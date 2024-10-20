@@ -16,7 +16,6 @@ use std::collections::HashMap;
 mod display;
 mod errors;
 pub(crate) mod hir_type;
-mod lowering;
 mod type_check;
 
 pub(crate) use hir_type::*;

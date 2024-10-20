@@ -1,21 +1,54 @@
 use crate::codegen::value::Value;
 use crate::codegen::CodeGen;
-use crate::hir::{Block, Expression, Type};
-use inkwell::values::BasicValue;
+use crate::hir::{BinaryOp, Block, Expression, Type};
+use inkwell::types::BasicType;
+use inkwell::values::{BasicMetadataValueEnum, BasicValue};
 
 impl<'ctx> CodeGen<'ctx> {
     /// Generates the LLVM IR for an expression.
     pub(super) fn generate_expression(&mut self, expr: &Expression) -> Option<Value<'ctx>> {
         match expr {
             Expression::Block(ref block) => self.generate_block(block, Vec::new()),
-            Expression::Literal { value, ty } => Some(self.generate_literal(value, ty)),
-            // Expr::Binary(ref binary_expr) => Some(self.generate_binary(binary_expr)),
-            Expression::Variable { name, ty } => Some(self.generate_variable(name, ty)),
-            // Expr::Call(ref call_expr) => self.generate_call_expr(call_expr),
-            // Expr::If(ref if_expr) => Some(self.generate_if_expr(if_expr)),
-            // Expr::StructLiteral(ref struct_literal) => {
-            //     Some(self.generate_struct_literal(struct_literal))
-            // }
+            Expression::Literal { ref value, ref ty } => Some(self.generate_literal(value, ty)),
+            Expression::Binary {
+                ref left,
+                ref left_type,
+                ref op,
+                ref right,
+                ref right_type,
+                ref resulting_type,
+            } => Some(self.generate_binary(left, left_type, op, right, right_type, resulting_type)),
+            Expression::Variable { ref name, ref ty } => Some(self.generate_variable(name, ty)),
+            Expression::Call {
+                ref callee,
+                ref arguments,
+                ref return_type,
+            } => self.generate_call_expr(callee, arguments, return_type),
+            Expression::If {
+                ref condition,
+                ref then_branch,
+                ref elif_branches,
+                ref else_branch,
+                ref ty,
+            } => self.generate_if_expr(condition, then_branch, elif_branches, else_branch, ty),
+            Expression::StructLiteral {
+                ref struct_name,
+                ref struct_type,
+                ref fields,
+            } => Some(self.generate_struct_literal(struct_name, struct_type, fields)),
+            Expression::StructAccess {
+                ref object,
+                ref object_ty,
+                ref object_name,
+                ref field,
+                ref returned_field_type,
+            } => Some(self.generate_struct_access(
+                object,
+                object_ty,
+                object_name,
+                field,
+                returned_field_type,
+            )),
             // Expr::StructAccess(ref struct_access) => {
             //     Some(self.generate_struct_access(struct_access))
             // }
@@ -38,27 +71,24 @@ impl<'ctx> CodeGen<'ctx> {
         block: &Block,
         variables: Vec<(&String, Value<'ctx>)>,
     ) -> Option<Value<'ctx>> {
-        // let alloca = if block.return_expr.is_some() {
-        //     Some(
-        //         self.create_entry_block_alloca(
-        //             // Unwrapping is safe: return_expr.is_some() implies return_type is not void,
-        //             // which is otherwise when to_basic_type_enum returns None.
-        //             block
-        //                 .return_type
-        //                 .to_basic_type_enum(self.context)
-        //                 .expect("return type err"),
-        //             "return_value_alloca",
-        //         ),
-        //     )
-        // } else {
-        //     None
-        // };
-
         {
             self.symbol_table.begin_scope();
 
-            for (name, variable) in variables {
-                self.symbol_table.add(name.to_string(), variable);
+            for (name, mut variable) in variables {
+                // Create a new entry block alloca for the variable.
+                // Add the alloca to the symbol table, which can then be loaded.
+                self.as_l_value(&mut variable);
+                let alloca = self.create_entry_block_alloca(
+                    variable.type_enum,
+                    format!("alloca_input_var_{}", name).as_str(),
+                );
+                self.builder
+                    .build_store(alloca, variable.basic_value)
+                    .unwrap();
+                self.symbol_table.add(
+                    name.to_string(),
+                    Value::new(variable.type_enum, alloca.as_basic_value_enum()),
+                );
             }
 
             for declaration in block.declarations.iter() {
@@ -66,33 +96,13 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
-        let value = match &block.return_expr {
-            Some(expr_) => {
-                match self.generate_expression(expr_) {
-                    Some(expr_value) => {
-                        todo!()
-                    },
-                    None => None,
-                }
-                // let expr_value = self.generate_expression(expr_);
-                // // If there is a return expression that isn't unit type, create an entry block
-                // // alloca, and return the return value.
-                // let alloca = self.create_entry_block_alloca(
-                //     // Unwrapping is safe: return_expr.is_some() implies return_type is not void,
-                //     // which is otherwise when to_basic_type_enum returns None.
-                //     block
-                //         .return_type
-                //         .to_basic_type_enum(self.context)
-                //         .expect("return type err"),
-                //     "return_value_alloca",
-                // );
-                // 
-                // self.builder
-                //     .build_store(alloca, expr_value.unwrap().basic_value)
-                //     .unwrap();
-            }
-            None => None,
-        };
+        let value = block.return_expr.as_ref().map(|expr_| {
+            let mut v = self
+                .generate_expression(expr_)
+                .expect("Type error unverified by type checker: return expression has no value");
+            self.as_l_value(&mut v);
+            v
+        });
 
         self.symbol_table.end_scope();
         value
@@ -140,7 +150,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         Value::new(
             // Why unwrapping is safe: should be verified by the type checker.
-            ty.to_basic_type_enum(self.context).unwrap(),
+            self.to_basic_type_enum(ty).unwrap(),
             literal_value,
         )
         // match literal {
@@ -189,380 +199,382 @@ impl<'ctx> CodeGen<'ctx> {
             "true" => 1,
             "false" => 0,
             // This should be verified by the type checker.
-            _ => unreachable!(
-                "Invalid boolean value. An error must have occurred in the type checker"
-            ),
+            _ => unreachable!("Invalid boolean value. File a bug report - error in type checker"),
         }
     }
 
-    // /// Generates the LLVM IR for binary expressions.
-    // fn generate_binary(
-    //     &mut self,
-    //     binary_expr: &crate::ast::BinaryExpr,
-    // ) -> (CartType<'ctx>, BasicValueEnum<'ctx>) {
-    //     let (left_type, left_value) = self.generate_expression(&binary_expr.left).unwrap();
-    //     let (right_type, right_value) = self.generate_expression(&binary_expr.right).unwrap();
-    //     let operator = &binary_expr.operator;
-    //
-    //     let (left_type, left_value) = if left_type.is_alloca {
-    //         let ty_enum = left_type.type_enum;
-    //         (
-    //             left_type.without_alloca(),
-    //             self.builder
-    //                 .build_load(ty_enum, left_value.into_pointer_value(), "loaded_left")
-    //                 .expect("Failed to load left value"),
-    //         )
-    //     } else {
-    //         (left_type, left_value)
-    //     };
-    //
-    //     let (right_type, right_value) = if right_type.is_alloca {
-    //         let ty_enum = right_type.type_enum;
-    //         (
-    //             right_type.without_alloca(),
-    //             self.builder
-    //                 .build_load(ty_enum, right_value.into_pointer_value(), "loaded_right")
-    //                 .expect("Failed to load right value"),
-    //         )
-    //     } else {
-    //         (right_type, right_value)
-    //     };
-    //
-    //     if left_type != right_type || left_type.name() != right_type.name() {
-    //         panic!("Binary expression types do not match");
-    //     }
-    //
-    //     match left_type.into() {
-    //         BasicTypeEnum::IntType(_) => {
-    //             let left = left_value.into_int_value();
-    //             let right = right_value.into_int_value();
-    //             (
-    //                 right_type,
-    //                 self.generate_int_binary(left, right, operator)
-    //                     .as_basic_value_enum(),
-    //             )
-    //         }
-    //         _ => unimplemented!("Binary expressions for non-int types"),
-    //     }
-    // }
-    //
-    // /// Generates LLVM IR for integer binary expressions.
-    // fn generate_int_binary(
-    //     &mut self,
-    //     left: IntValue<'ctx>,
-    //     right: IntValue<'ctx>,
-    //     operator: &Token,
-    // ) -> IntValue<'ctx> {
-    //     match operator {
-    //         Token::Plus(..) => self.builder.build_int_add(left, right, "add").unwrap(),
-    //         Token::Minus(..) => self.builder.build_int_sub(left, right, "sub").unwrap(),
-    //         Token::Star(..) => self.builder.build_int_mul(left, right, "mul").unwrap(),
-    //         Token::Slash(..) => self
-    //             .builder
-    //             .build_int_unsigned_div(left, right, "div")
-    //             .unwrap(),
-    //         Token::EqualEqual(..) => self
-    //             .builder
-    //             .build_int_compare(IntPredicate::EQ, left, right, "eq")
-    //             .unwrap(),
-    //         Token::LessEqual(..) => self
-    //             .builder
-    //             .build_int_compare(IntPredicate::SLE, left, right, "sle")
-    //             .unwrap(),
-    //         Token::LeftAngle(..) => self
-    //             .builder
-    //             .build_int_compare(IntPredicate::SLT, left, right, "slt")
-    //             .unwrap(),
-    //         Token::GreaterEqual(..) => self
-    //             .builder
-    //             .build_int_compare(IntPredicate::SGE, left, right, "sge")
-    //             .unwrap(),
-    //         Token::RightAngle(..) => self
-    //             .builder
-    //             .build_int_compare(IntPredicate::SGT, left, right, "sgt")
-    //             .unwrap(),
-    //         Token::Percent(..) => self
-    //             .builder
-    //             .build_int_signed_rem(left, right, "srem")
-    //             .unwrap(),
-    //         _ => unimplemented!("Other binary operators"),
-    //     }
-    // }
-    //
+    /// Generates the LLVM IR for binary expressions.
+    fn generate_binary(
+        &mut self,
+        left: &Expression,
+        left_type: &Type,
+        op: &BinaryOp,
+        right: &Expression,
+        right_type: &Type,
+        resulting_type: &Type,
+    ) -> Value<'ctx> {
+        let mut left = self.generate_expression(left).unwrap();
+        let mut right = self.generate_expression(right).unwrap();
+
+        self.as_l_value(&mut left);
+        self.as_l_value(&mut right);
+
+        self.apply_binary_op(&left, left_type, op, &right, right_type, resulting_type)
+    }
+
+    /// Applies a binary operator to two values.
+    fn apply_binary_op(
+        &self,
+        left: &Value<'ctx>,
+        left_type: &Type,
+        op: &BinaryOp,
+        right: &Value<'ctx>,
+        right_type: &Type,
+        resulting_type: &Type,
+    ) -> Value<'ctx> {
+        // TODO: Only supports integer types for now. Add more types in the future.
+        // This involves a larger match expression.
+
+        let res = match op {
+            BinaryOp::Add => self
+                .builder
+                .build_int_add(
+                    left.basic_value.into_int_value(),
+                    right.basic_value.into_int_value(),
+                    "add",
+                )
+                .unwrap(),
+            BinaryOp::Sub => self
+                .builder
+                .build_int_sub(
+                    left.basic_value.into_int_value(),
+                    right.basic_value.into_int_value(),
+                    "sub",
+                )
+                .unwrap(),
+            BinaryOp::Mul => self
+                .builder
+                .build_int_mul(
+                    left.basic_value.into_int_value(),
+                    right.basic_value.into_int_value(),
+                    "mul",
+                )
+                .unwrap(),
+            BinaryOp::Div => self
+                .builder
+                .build_int_unsigned_div(
+                    left.basic_value.into_int_value(),
+                    right.basic_value.into_int_value(),
+                    "div",
+                )
+                .unwrap(),
+            BinaryOp::Mod => self
+                .builder
+                .build_int_signed_rem(
+                    left.basic_value.into_int_value(),
+                    right.basic_value.into_int_value(),
+                    "srem",
+                )
+                .unwrap(),
+            BinaryOp::And => self
+                .builder
+                .build_and(
+                    left.basic_value.into_int_value(),
+                    right.basic_value.into_int_value(),
+                    "and",
+                )
+                .unwrap(),
+            BinaryOp::Or => self
+                .builder
+                .build_or(
+                    left.basic_value.into_int_value(),
+                    right.basic_value.into_int_value(),
+                    "or",
+                )
+                .unwrap(),
+            BinaryOp::Eq => self
+                .builder
+                .build_int_compare(
+                    inkwell::IntPredicate::EQ,
+                    left.basic_value.into_int_value(),
+                    right.basic_value.into_int_value(),
+                    "eq",
+                )
+                .unwrap(),
+            BinaryOp::Neq => self
+                .builder
+                .build_int_compare(
+                    inkwell::IntPredicate::NE,
+                    left.basic_value.into_int_value(),
+                    right.basic_value.into_int_value(),
+                    "ne",
+                )
+                .unwrap(),
+            BinaryOp::Lt => self
+                .builder
+                .build_int_compare(
+                    inkwell::IntPredicate::SLT,
+                    left.basic_value.into_int_value(),
+                    right.basic_value.into_int_value(),
+                    "slt",
+                )
+                .unwrap(),
+            BinaryOp::Gt => self
+                .builder
+                .build_int_compare(
+                    inkwell::IntPredicate::SGT,
+                    left.basic_value.into_int_value(),
+                    right.basic_value.into_int_value(),
+                    "sgt",
+                )
+                .unwrap(),
+            BinaryOp::Le => self
+                .builder
+                .build_int_compare(
+                    inkwell::IntPredicate::SLE,
+                    left.basic_value.into_int_value(),
+                    right.basic_value.into_int_value(),
+                    "sle",
+                )
+                .unwrap(),
+            BinaryOp::Ge => self
+                .builder
+                .build_int_compare(
+                    inkwell::IntPredicate::SGE,
+                    left.basic_value.into_int_value(),
+                    right.basic_value.into_int_value(),
+                    "sge",
+                )
+                .unwrap(),
+        };
+
+        Value::new(
+            self.to_basic_type_enum(left_type).unwrap(),
+            res.as_basic_value_enum(),
+        )
+    }
+
     /// Generates LLVM IR for variable expressions.
-    fn generate_variable(&self, name: &String, ty: &Type) -> Value<'ctx> {
-        if let Some(function) = self.module.get_function(&name) {
+    fn generate_variable(&mut self, name: &str, ty: &Type) -> Value<'ctx> {
+        if let Some(function) = self.module.get_function(name) {
             let return_type = function.get_type().get_return_type();
             match return_type {
                 Some(return_type_enum) => Value::new(
                     return_type_enum,
                     function.as_global_value().as_basic_value_enum(),
                 ),
-                _ => todo!(), // Some(return_type) => (
-                              //     return_type.as_basic_type_enum().into(),
-                              //     function.as_global_value().as_basic_value_enum(),
-                              // ),
-                              // None => (
-                              //     CartType::void(self.context),
-                              //     function.as_global_value().as_basic_value_enum(),
-                              // ),
+                _ => panic!("Void assigned to variable, where?"), // Some(return_type) => (
+                                                                  //     return_type.as_basic_type_enum().into(),
+                                                                  //     function.as_global_value().as_basic_value_enum(),
+                                                                  // ),
+                                                                  // None => (
+                                                                  //     CartType::void(self.context),
+                                                                  //     function.as_global_value().as_basic_value_enum(),
+                                                                  // ),
             }
         } else {
             // Then standard variable in the symbol table.
             // It exists, as verified by the type checker.
-            *self.symbol_table.get(name).unwrap()
+            match self.loaded_symbol_table.get(name) {
+                Some(var_loaded_value) => {
+                    // TODO: Check if needs l_value casting
+                    *var_loaded_value
+                }
+                None => {
+                    let mut var_alloca = *self.symbol_table.get(name).unwrap();
+                    self.as_l_value(&mut var_alloca);
+                    let loaded = self
+                        .builder
+                        .build_load(
+                            var_alloca.type_enum,
+                            var_alloca.basic_value.into_pointer_value(),
+                            format!(
+                                "loaded_{}",
+                                var_alloca.basic_value.get_name().to_str().unwrap()
+                            )
+                            .as_str(),
+                        )
+                        .unwrap();
+                    let value = Value::new(var_alloca.type_enum, loaded.as_basic_value_enum());
+                    self.loaded_symbol_table.add(name.to_string(), value);
+                    value
+                }
+            }
         }
-        // let name = token_value!(token);
-        // if let Some(function) = self.module.get_function(&name) {
-        //     let return_type = function.get_type().get_return_type();
-        //     match return_type {
-        //         Some(return_type) => (
-        //             return_type.as_basic_type_enum().into(),
-        //             function.as_global_value().as_basic_value_enum(),
-        //         ),
-        //         None => (
-        //             CartType::void(self.context),
-        //             function.as_global_value().as_basic_value_enum(),
-        //         ),
-        //     }
-        // } else if let Some(variable) = self.symbol_table.get(&name) {
-        //     match variable {
-        //         Variable::Immutable(pointee_type, pointer_value)
-        //         | Variable::Mutable(pointee_type, pointer_value) => (
-        //             pointee_type.clone().with_alloca(),
-        //             pointer_value.as_basic_value_enum(),
-        //         ),
-        //         Variable::StructDecl(_, _) => panic!("Struct declarations can't be values"),
-        //         Variable::ImmutableParam(ref param_type, param) => (param_type.clone(), *param),
-        //     }
-        // } else {
-        //     panic!("Variable `{}` not found", name);
-        // }
     }
 
     // /// Generates LLVM IR for call expressions.
-    // fn generate_call_expr(
-    //     &mut self,
-    //     call_expr: &CallExpr,
-    // ) -> Option<(CartType<'ctx>, BasicValueEnum<'ctx>)> {
-    //     // Temporarily disabled!
-    //     //
-    //     // let (_, callee_expr) = self
-    //     //     .generate_expression(&call_expr.callee)
-    //     //     .expect("Callee expression not found");
-    //     //
-    //     // callee_expr.get_name();
-    //     // Returns variable name ^
-    //     // let callee = self
-    //     //     .module
-    //     //     .get_function(callee_expr.get_name().to_str().unwrap())
-    //     //     .expect("Callee function not found");
-    //     let function_name = token_value!(&call_expr.callee);
-    //     let callee  = self
-    //         .module
-    //         .get_function(&function_name)
-    //         .expect("Callee function not found");
-    //
-    //     if callee.count_params() != call_expr.arguments.len() as u32 {
-    //         panic!("Incorrect # of arguments")
-    //     }
-    //
-    //     let args: Vec<BasicMetadataValueEnum> = call_expr
-    //         .arguments
-    //         .iter()
-    //         .map(|arg| {
-    //             // self.generate_expression(arg).unwrap().1.into()
-    //             let (arg_type, arg_value) = self.generate_expression(arg).unwrap();
-    //             if arg_type.is_alloca {
-    //                 // TODO: pass by reference for some types
-    //                 // load the value
-    //                 let loaded = self
-    //                     .builder
-    //                     .build_load(
-    //                         arg_type.type_enum,
-    //                         arg_value.into_pointer_value(),
-    //                         "loaded_var",
-    //                     )
-    //                     .expect("Failed to load value");
-    //                 loaded.into()
-    //             } else {
-    //                 arg_value.into()
-    //             }
-    //         })
-    //         .collect();
-    //
-    //     let call_site = self
-    //         .builder
-    //         .build_call(callee, &args, "call")
-    //         .expect("Failed to build call");
-    //
-    //     if let Some(return_type) = callee.get_type().get_return_type() {
-    //         let return_type = return_type.as_basic_type_enum().into();
-    //         let return_value = call_site
-    //             .try_as_basic_value()
-    //             .left()
-    //             .expect("Return type unsupported yet");
-    //         Some((return_type, return_value))
-    //     } else {
-    //         None
-    //     }
-    // }
-    //
-    // /// Generates LLVM IR for if expressions.
-    // fn generate_if_expr(&mut self, if_expr: &IfExpr) -> (CartType<'ctx>, BasicValueEnum<'ctx>) {
-    //     // After lowering, it is ensured that there is always and else branch,
-    //     // and that elif statements, if any, are within the else branch.
-    //     let function = self
-    //         .builder
-    //         .get_insert_block()
-    //         .expect("No insertion block")
-    //         .get_parent()
-    //         .expect("No parent");
-    //
-    //     let then_block = self.context.append_basic_block(function, "then");
-    //     let else_block = self.context.append_basic_block(function, "else");
-    //     let exit_block = self.context.append_basic_block(function, "exit");
-    //
-    //     let (_, cond_value) = self
-    //         .generate_expression(&if_expr.condition)
-    //         .expect("Failed to generate conditional value");
-    //
-    //     self.builder
-    //         .build_conditional_branch(cond_value.into_int_value(), then_block, else_block)
-    //         .unwrap();
-    //
-    //     self.builder.position_at_end(then_block);
-    //     let (then_type, then_value) = self
-    //         .generate_block(&if_expr.then_branch, Vec::new())
-    //         .expect("Can't generate then block");
-    //     self.builder.build_unconditional_branch(exit_block).unwrap();
-    //
-    //     self.builder.position_at_end(else_block);
-    //
-    //     let else_value = if let Some(ref else_block) = if_expr.else_branch {
-    //         self.generate_block(else_block, Vec::new())
-    //     } else {
-    //         None
-    //     };
-    //
-    //     if let Some(else_expr) = else_value.clone() {
-    //         if then_type != else_expr.0 || then_type.name() != else_expr.0.name() {
-    //             panic!("If and else block types must match");
-    //         }
-    //     }
-    //
-    //     self.builder.build_unconditional_branch(exit_block).unwrap();
-    //
-    //     self.builder.position_at_end(exit_block);
-    //     let phi_node = self
-    //         .builder
-    //         .build_phi(self.context.i32_type(), "if_phi")
-    //         .unwrap();
-    //
-    //     phi_node.add_incoming(&[(&then_value, then_block)]);
-    //     if let Some(else_value) = else_value {
-    //         phi_node.add_incoming(&[(&else_value.1, else_block)]);
-    //     }
-    //
-    //     // then_type == else_value.0
-    //     (then_type, phi_node.as_basic_value())
-    // }
-    //
-    // /// Generates LLVM IR for struct literals.
-    // fn generate_struct_literal(
-    //     &mut self,
-    //     struct_literal: &StructLiteral,
-    // ) -> (CartType<'ctx>, BasicValueEnum<'ctx>) {
-    //     let struct_literal_name = token_value!(&struct_literal.name);
-    //
-    //     let (struct_type, field_to_index) = {
-    //         // TODO: Try to remove clone...
-    //         let variable = self
-    //             .symbol_table
-    //             .get(&struct_literal_name)
-    //             .expect("Unknown struct")
-    //             .clone();
-    //         match variable {
-    //             Variable::StructDecl(struct_type, field_to_index) => (struct_type, field_to_index),
-    //             _ => panic!("Not a struct"),
-    //         }
-    //     };
-    //
-    //     let twine = format!("struct_literal_{}", struct_literal_name);
-    //     let struct_ptr = self.create_entry_block_alloca(struct_type, &twine);
-    //
-    //     for (field_name, field_expr) in struct_literal.fields.iter() {
-    //         let field_name = token_value!(field_name);
-    //         let (field_index, _) = field_to_index.get(&field_name).expect("Unknown field");
-    //         let (_, field_expr_value) = self
-    //             .generate_expression(field_expr)
-    //             .expect("Failed to generate field expression");
-    //
-    //         let gep = self
-    //             .builder
-    //             .build_struct_gep(struct_type, struct_ptr, *field_index as u32, &field_name)
-    //             .expect("Failed to build GEP");
-    //         self.builder
-    //             .build_store(gep, field_expr_value)
-    //             .expect("Failed to store field");
-    //     }
-    //
-    //     // Return the pointer to the struct
-    //     let cart_type: CartType = struct_type.as_basic_type_enum().into();
-    //     (
-    //         cart_type.with_name(struct_literal_name).with_alloca(),
-    //         struct_ptr.as_basic_value_enum(),
-    //     )
-    // }
-    //
-    // /// Generates LLVM IR for struct access expressions.
-    // fn generate_struct_access(
-    //     &mut self,
-    //     struct_access: &StructAccessExpr,
-    // ) -> (CartType<'ctx>, BasicValueEnum<'ctx>) {
-    //     // Fields: struct_access_expr.fields. For example if there's a struct `User` assigned to
-    //     // `user`, then `user.name.first` would be represented as [name, first].
-    //     // Object: struct_access_expr.object. This is the struct object itself.
-    //     // TODO: Support multiple fields
-    //     let field_name = token_value!(&struct_access.fields[0]);
-    //     let (cart_struct_type, struct_value_or_ptr) = self
-    //         .generate_expression(&struct_access.object)
-    //         .expect("Can't generate object");
-    //
-    //     let struct_object_name = cart_struct_type.name().expect("Can't retrieve name");
-    //
-    //     let struct_ptr = match cart_struct_type.is_alloca {
-    //         true => struct_value_or_ptr.into_pointer_value(),
-    //         false => {
-    //             let struct_ptr =
-    //                 self.create_entry_block_alloca(cart_struct_type.type_enum, struct_object_name);
-    //             self.builder
-    //                 .build_store(struct_ptr, struct_value_or_ptr)
-    //                 .unwrap();
-    //             struct_ptr
-    //         }
-    //     };
-    //
-    //     let (index, field_type) = match self
-    //         .symbol_table
-    //         .get(struct_object_name)
-    //         .expect("Can't retrieve variable")
-    //     {
-    //         Variable::StructDecl(_, field_to_index) => {
-    //             field_to_index.get(&field_name).expect("Unknown field")
-    //         }
-    //         _ => panic!("Not a struct"),
-    //     };
-    //
-    //     let bte: BasicTypeEnum = cart_struct_type.into();
-    //     let gep = self
-    //         .builder
-    //         .build_struct_gep(bte, struct_ptr, *index as u32, &field_name)
-    //         .expect("Failed to build GEP");
-    //
-    //     (field_type.clone().with_alloca(), gep.as_basic_value_enum())
-    // }
-    //
+    fn generate_call_expr(
+        &mut self,
+        callee: &String,
+        arguments: &[Expression],
+        return_type: &Type,
+    ) -> Option<Value<'ctx>> {
+        let callee_fn = self.module.get_function(callee).unwrap();
+
+        let args: Vec<BasicMetadataValueEnum> = arguments
+            .iter()
+            .map(|arg| {
+                // self.generate_expression(arg).unwrap().1.into()
+                let mut value = self.generate_expression(arg).unwrap();
+                self.as_l_value(&mut value);
+                value.basic_value.into()
+            })
+            .collect();
+
+        let call_site = self
+            .builder
+            .build_call(callee_fn, &args, format!("call_{}", callee).as_str())
+            .unwrap();
+
+        match return_type {
+            Type::Unit => None,
+            _ => Some(Value::new(
+                self.to_basic_type_enum(return_type).unwrap(),
+                call_site.try_as_basic_value().unwrap_left(),
+            )),
+        }
+    }
+
+    /// Generates LLVM IR for if expressions.
+    fn generate_if_expr(
+        &mut self,
+        condition: &Expression,
+        then_branch: &Block,
+        elif_branches: &[(Expression, Block)],
+        else_branch: &Option<Box<Block>>,
+        ty: &Type,
+    ) -> Option<Value<'ctx>> {
+        let function = self
+            .builder
+            .get_insert_block()
+            .expect("No insertion block")
+            .get_parent()
+            .expect("No parent");
+
+        let then_block = self.context.append_basic_block(function, "then");
+        let else_block = self.context.append_basic_block(function, "else");
+        let exit_block = self.context.append_basic_block(function, "exit");
+
+        // TODO: Handle elif branches
+        let mut condition = self.generate_expression(condition).unwrap();
+        self.as_l_value(&mut condition);
+
+        self.builder
+            .build_conditional_branch(
+                condition.basic_value.into_int_value(),
+                then_block,
+                else_block,
+            )
+            .unwrap();
+
+        self.builder.position_at_end(then_block);
+        let then_value = self.generate_block(then_branch, Vec::new()).unwrap();
+
+        self.builder.build_unconditional_branch(exit_block).unwrap();
+        self.builder.position_at_end(else_block);
+
+        let else_value = if let Some(ref else_block) = else_branch {
+            self.generate_block(else_block, Vec::new())
+        } else {
+            None
+        };
+
+        self.builder.build_unconditional_branch(exit_block).unwrap();
+        self.builder.position_at_end(exit_block);
+
+        let phi_node = self
+            .builder
+            .build_phi(self.context.i32_type(), "if_phi")
+            .unwrap();
+
+        phi_node.add_incoming(&[(&then_value.basic_value, then_block)]);
+        if let Some(else_value) = else_value {
+            phi_node.add_incoming(&[(&else_value.basic_value, else_block)]);
+        }
+
+        // then_type == else_value.0
+        // (then_type, phi_node.as_basic_value())
+        Some(Value::new(
+            // ty.to_basic_type_enum(&self.context).unwrap(),
+            then_value.type_enum,
+            phi_node.as_basic_value(),
+        ))
+    }
+
+    /// Generates LLVM IR for struct literals.
+    fn generate_struct_literal(
+        &mut self,
+        struct_name: &str,
+        struct_type: &Type,
+        fields: &[(String, Expression)],
+    ) -> Value<'ctx> {
+        let llvm_struct_type = self.to_basic_type_enum(struct_type).unwrap();
+
+        let struct_ptr = self.create_entry_block_alloca(
+            llvm_struct_type,
+            format!("struct_literal_ptr_{}", struct_name).as_str(),
+        );
+
+        for (field_name, field_expr) in fields {
+            let struct_field_value = self.generate_expression(field_expr).unwrap();
+
+            let gep = self
+                .builder
+                .build_struct_gep(
+                    llvm_struct_type,
+                    struct_ptr,
+                    self.struct_field_index(struct_name, field_name) as u32,
+                    field_name,
+                )
+                .unwrap();
+            self.builder
+                .build_store(gep, struct_field_value.basic_value)
+                .unwrap();
+        }
+
+        Value::new(
+            self.context
+                .ptr_type(inkwell::AddressSpace::default())
+                .as_basic_type_enum(),
+            struct_ptr.as_basic_value_enum(),
+        )
+    }
+
+    /// Generates LLVM IR for struct access expressions.
+    fn generate_struct_access(
+        &mut self,
+        object: &Expression,
+        object_ty: &Type,
+        object_name: &str,
+        field: &str,
+        returned_field_type: &Type,
+    ) -> Value<'ctx> {
+        let mut struct_object = self.generate_expression(object).unwrap();
+        self.as_l_value(&mut struct_object);
+        let struct_type = self.to_basic_type_enum(object_ty).unwrap();
+
+        let field_index = self.struct_field_index(object_name, field);
+
+        let gep = self
+            .builder
+            .build_struct_gep(
+                struct_type,
+                struct_object.basic_value.into_pointer_value(),
+                field_index as u32,
+                field,
+            )
+            .unwrap();
+
+        Value::new(
+            self.to_basic_type_enum(returned_field_type).unwrap(),
+            // self.context.ptr_type(inkwell::AddressSpace::default()).as_basic_type_enum(),
+            gep.as_basic_value_enum(),
+        )
+        .as_r_value()
+        // TODO: Support multiple fields
+    }
+
     // /// Generates LLVM IR for assignment expressions.
     // fn generate_assignment(
     //     &mut self,

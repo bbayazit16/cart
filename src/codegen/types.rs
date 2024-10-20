@@ -1,43 +1,30 @@
+use crate::codegen::CodeGen;
 use crate::hir::Type;
-use inkwell::context::Context;
 use inkwell::types::{
     AnyType, AnyTypeEnum, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType,
 };
+use crate::codegen::value::Value;
 
-/// Creates a function type from the given return type and parameter types.
-pub(super) fn create_function_type<'ctx>(
-    context: &'ctx Context,
-    return_type: &Type,
-    param_types: &[&Type],
-) -> FunctionType<'ctx> {
-    let return_type = return_type.to_basic_type_enum(context);
-    let param_types: Vec<BasicMetadataTypeEnum> = param_types
-        .iter()
-        // Why unwrapping is safe: The non-void types are already verified by the HIR.
-        .map(|ty| ty.to_basic_type_enum(context).unwrap().into())
-        .collect();
-
-    match return_type {
-        Some(non_void) => non_void.fn_type(&param_types, false),
-        None => context.void_type().fn_type(&param_types, false),
-    }
-}
-
-impl Type {
+impl<'ctx> CodeGen<'ctx> {
     /// Converts the type to Inkwell AnyTypeEnum.
-    pub(super) fn to_any_type_enum<'ctx>(&self, ctx: &'ctx Context) -> AnyTypeEnum<'ctx> {
-        match self {
-            Type::Int => ctx.i32_type().as_any_type_enum(),
-            Type::Int64 => ctx.i64_type().as_any_type_enum(),
-            Type::Int128 => ctx.i128_type().as_any_type_enum(),
-            Type::Int256 => ctx.custom_width_int_type(256).as_any_type_enum(),
-            Type::Float => ctx.f32_type().as_any_type_enum(),
-            Type::Float64 => ctx.f64_type().as_any_type_enum(),
-            Type::Bool => ctx.bool_type().as_any_type_enum(),
+    pub(super) fn to_any_type_enum(&self, ty: &Type) -> AnyTypeEnum<'ctx> {
+        match ty {
+            Type::Int => self.context.i32_type().as_any_type_enum(),
+            Type::Int64 => self.context.i64_type().as_any_type_enum(),
+            Type::Int128 => self.context.i128_type().as_any_type_enum(),
+            Type::Int256 => self.context.custom_width_int_type(256).as_any_type_enum(),
+            Type::Float => self.context.f32_type().as_any_type_enum(),
+            Type::Float64 => self.context.f64_type().as_any_type_enum(),
+            Type::Bool => self.context.bool_type().as_any_type_enum(),
             Type::String => todo!(),
-            Type::Unit => ctx.void_type().as_any_type_enum(),
+            Type::Unit => self.context.void_type().as_any_type_enum(),
             Type::Array(_) => todo!(),
-            Type::Struct(_) => todo!(),
+            Type::Struct(struct_name) => self
+                .struct_definition_table
+                .get(struct_name)
+                .unwrap()
+                .0
+                .as_any_type_enum(),
             Type::Enum(_) => todo!(),
             Type::Error(_) => todo!(),
             Type::Generic(_, _) => todo!(),
@@ -46,11 +33,54 @@ impl Type {
     }
 
     /// Converts the type to Inkwell BasicTypeEnum.
-    pub(super) fn to_basic_type_enum<'ctx>(
-        &self,
-        ctx: &'ctx Context,
-    ) -> Option<BasicTypeEnum<'ctx>> {
-        let any_type_enum = self.to_any_type_enum(ctx);
+    pub(super) fn to_basic_type_enum(&self, ty: &Type) -> Option<BasicTypeEnum<'ctx>> {
+        let any_type_enum = self.to_any_type_enum(ty);
         BasicTypeEnum::try_from(any_type_enum).ok()
+    }
+
+    /// Returns the index of the field in the struct.
+    pub(super) fn struct_field_index(&self, struct_name: &str, struct_field: &str) -> usize {
+        self.struct_definition_table
+            .get(struct_name)
+            .unwrap()
+            .1
+            .get(struct_field)
+            .unwrap()
+            .0
+    }
+
+    /// Creates a function type from the given return type and parameter types.
+    pub(super) fn create_function_type(
+        &self,
+        return_type: &Type,
+        param_types: &[&Type],
+    ) -> FunctionType<'ctx> {
+        let return_type = self.to_basic_type_enum(return_type);
+        let param_types: Vec<BasicMetadataTypeEnum> = param_types
+            .iter()
+            // Why unwrapping is safe: The non-void types are already verified by the HIR.
+            .map(|ty| self.to_basic_type_enum(ty).unwrap().into())
+            .collect();
+
+        match return_type {
+            Some(non_void) => non_void.fn_type(&param_types, false),
+            None => self.context.void_type().fn_type(&param_types, false),
+        }
+    }
+    
+    /// Set the value as an l-value. If already an l-value, do nothing.
+    pub(super) fn as_l_value(&mut self, value: &mut Value<'ctx>) {
+        if value.is_r_value {
+            let loaded_var = self.builder
+                .build_load(
+                    value.type_enum,
+                    value.basic_value.into_pointer_value(),
+                    "cast_l_value",
+                )
+                .unwrap();
+    
+            value.basic_value = loaded_var;
+            value.is_r_value = false;
+        }
     }
 }

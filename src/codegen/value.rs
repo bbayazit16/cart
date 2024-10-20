@@ -7,7 +7,7 @@ use inkwell::values::BasicValueEnum;
 pub(super) struct Value<'ctx> {
     pub type_enum: BasicTypeEnum<'ctx>,
     pub basic_value: BasicValueEnum<'ctx>,
-    pub is_alloca: bool,
+    pub is_r_value: bool,
 }
 
 impl<'ctx> Value<'ctx> {
@@ -16,46 +16,13 @@ impl<'ctx> Value<'ctx> {
         Self {
             type_enum,
             basic_value,
-            is_alloca: false,
+            is_r_value: false,
         }
     }
-}
 
-// pub(super) struct ValueBuilder<'ctx> {
-//     pub type_enum: Option<BasicTypeEnum<'ctx>>,
-//     pub value: Option<BasicValueEnum<'ctx>>,
-//     pub is_alloca: Option<bool>,
-// }
-//
-// impl<'ctx> ValueBuilder<'ctx> {
-//     pub fn new() -> Self {
-//         Self {
-//             type_enum: None,
-//             value: None,
-//             is_alloca: None,
-//         }
-//     }
-//
-//     pub fn with_type(mut self, type_enum: BasicTypeEnum<'ctx>) -> Self {
-//         self.type_enum = Some(type_enum);
-//         self
-//     }
-//
-//     pub fn with_value(mut self, value: BasicValueEnum<'ctx>) -> Self {
-//         self.value = Some(value);
-//         self
-//     }
-//
-//     pub fn with_alloca(mut self, is_alloca: bool) -> Self {
-//         self.is_alloca = Some(is_alloca);
-//         self
-//     }
-//
-//     pub fn build(self) -> Value<'ctx> {
-//         Value {
-//             type_enum: self.type_enum.expect("Type not set"),
-//             value: self.value.expect("Value not set"),
-//             is_alloca: self.is_alloca.unwrap_or(false)
-//         }
-//     }
-// }
+    /// Set the value as an r-value.
+    pub(super) fn as_r_value(mut self) -> Self {
+        self.is_r_value = true;
+        self
+    }
+}

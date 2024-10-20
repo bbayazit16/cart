@@ -1,7 +1,8 @@
-use crate::codegen::types::create_function_type;
+use std::collections::HashMap;
+use inkwell::types::BasicTypeEnum;
 use crate::codegen::value::Value;
 use crate::codegen::CodeGen;
-use crate::hir::{Declaration, Function};
+use crate::hir::{Declaration, Function, Type};
 use inkwell::values::BasicValue;
 
 impl<'ctx> CodeGen<'ctx> {
@@ -10,18 +11,25 @@ impl<'ctx> CodeGen<'ctx> {
         match declaration {
             Declaration::Function(ref function) => self.generate_function(function),
             Declaration::Statement(ref stmt) => self.generate_statement(stmt),
+            Declaration::Struct {
+                ref name,
+                ref fields,
+                ref generic_declarations,
+            } => self.generate_struct(name, fields, generic_declarations),
             // Declaration::StructDecl(ref struct_decl) => self.generate_struct(struct_decl),
             // Declaration::ExtensionDecl(ref extension_decl) => {
             //     self.generate_extension(extension_decl)
             // }
-            _ => todo!(),
+            e => {
+                dbg!(&e);
+                todo!()
+            },
         };
     }
 
     /// Generates the LLVM IR for a function declaration.
     fn generate_function(&mut self, function_hir: &Function) {
-        let function_type = create_function_type(
-            self.context,
+        let function_type = self.create_function_type(
             &function_hir.signature.return_type,
             &function_hir
                 .signature
@@ -53,53 +61,92 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(basic_block);
 
         let basic_value_enum = self.generate_block(&function_hir.body, variables_to_add);
-        let basic_value = basic_value_enum
-            .as_ref()
-            .map(|value| &value.basic_value as &dyn BasicValue);
-        
-        self.builder.build_return(basic_value).unwrap();
+
+        if let Some(basic_value) = basic_value_enum {
+            let return_block = self.context.append_basic_block(function, "return_block");
+            self.builder
+                .build_unconditional_branch(return_block)
+                .unwrap();
+            self.builder.position_at_end(return_block);
+            self.builder
+                .build_return(Some(&basic_value.basic_value))
+                .unwrap();
+        } else {
+            self.builder.build_return(None).unwrap();
+        }
+        // let basic_value = basic_value_enum
+        //     .as_ref()
+        //     .map(|value| &value.basic_value as &dyn BasicValue);
+        //
+        //
+        // self.builder.build_return(basic_value).unwrap();
     }
 
-    // /// Generates the LLVM IR for a struct declaration.
-    // fn generate_struct(&mut self, struct_decl: &crate::ast::StructDecl) {
-    //     let field_types = struct_decl
-    //         .fields
-    //         .iter()
-    //         .map(|field| {
-    //             field
-    //                 .field_type
-    //                 .to_basic_type_enum(self.context)
-    //                 .expect("Invalid field type")
-    //         })
-    //         .collect::<Vec<BasicTypeEnum>>();
-    //
-    //     let struct_type = self.context.struct_type(&field_types, false);
-    //
-    //     let fields_to_indices_and_types = struct_decl
-    //         .fields
-    //         .iter()
-    //         .enumerate()
-    //         .map(|(i, field)| {
-    //             (
-    //                 token_value!(&field.name, Identifier),
-    //                 (
-    //                     i,
-    //                     field
-    //                         .field_type
-    //                         .to_basic_type_enum(self.context)
-    //                         .expect("Can't have void type in fields")
-    //                         .into(),
-    //                 ),
-    //             )
-    //         })
-    //         .collect();
-    //
-    //     self.symbol_table.add(
-    //         token_value!(&struct_decl.name),
-    //         Variable::StructDecl(struct_type, fields_to_indices_and_types),
-    //     );
-    // }
-    //
+    /// Generates the LLVM IR for a struct declaration.
+    fn generate_struct(&mut self, name: &str, fields: &[(String, Type)], generic_declarations: &[Type]) {
+        let field_llvm_types = fields
+            .iter()
+            .map(|(_, ty)| self.to_basic_type_enum(ty).unwrap())
+            .collect::<Vec<BasicTypeEnum>>();
+        
+        let struct_type = self.context.struct_type(&field_llvm_types, false);
+        let fields_to_indices_and_types: HashMap<String, (usize, BasicTypeEnum)> = fields
+            .iter()
+            .enumerate()
+            .map(|(i, (name, ty))| {
+                (
+                    name.clone(),
+                    (
+                        i,
+                        self.to_basic_type_enum(ty).unwrap()
+                    ),
+                )
+            })
+            .collect();
+        
+        self.struct_definition_table.add(
+            name.to_string(),
+            (struct_type, fields_to_indices_and_types),
+        );
+        
+        // let field_types = struct_decl
+        //     .fields
+        //     .iter()
+        //     .map(|field| {
+        //         field
+        //             .field_type
+        //             .to_basic_type_enum(self.context)
+        //             .expect("Invalid field type")
+        //     })
+        //     .collect::<Vec<BasicTypeEnum>>();
+        // 
+        // let struct_type = self.context.struct_type(&field_types, false);
+        // 
+        // let fields_to_indices_and_types = struct_decl
+        //     .fields
+        //     .iter()
+        //     .enumerate()
+        //     .map(|(i, field)| {
+        //         (
+        //             token_value!(&field.name, Identifier),
+        //             (
+        //                 i,
+        //                 field
+        //                     .field_type
+        //                     .to_basic_type_enum(self.context)
+        //                     .expect("Can't have void type in fields")
+        //                     .into(),
+        //             ),
+        //         )
+        //     })
+        //     .collect();
+        // 
+        // self.symbol_table.add(
+        //     token_value!(&struct_decl.name),
+        //     Variable::StructDecl(struct_type, fields_to_indices_and_types),
+        // );
+    }
+    
     // /// Generates the LLVM IR for an extension declaration.
     // /// Extensions are used to add methods to existing types.
     // fn generate_extension(&mut self, extension_decl: &crate::ast::ExtensionDecl) {

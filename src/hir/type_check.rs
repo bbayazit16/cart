@@ -904,6 +904,15 @@ impl<'a> TypeChecker {
             return if arg_types.len() > params.len() {
                 // Original arguments are longer than the provided arguments.
                 // Then the expected type is the one in `arg_types`.
+                // 
+                // TODO: Panic due to index out of bounds when:
+                // func empty_func(x: int) {
+                //     0;
+                // }
+                //
+                // func main() -> int {
+                //     empty_func()
+                // }
                 Err((&arg_types[params.len() - 1], &Type::Unit))
             } else {
                 // Provided arguments are longer than they are supposed to be.
