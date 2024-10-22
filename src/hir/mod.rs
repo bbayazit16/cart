@@ -48,6 +48,16 @@ impl TypeChecker {
                 is_self: false,
             },
         );
+        functions.add(
+            "print_string".to_string(),
+            FunctionSignature {
+                name: "print_string".to_string(),
+                params: vec![("string".into(), Type::String)],
+                return_type: Type::Unit,
+                generic_declarations: Vec::new(),
+                is_self: false,
+            },
+        );
 
         Self {
             reporter,

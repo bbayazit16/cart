@@ -16,6 +16,7 @@ use inkwell::module::Module;
 use inkwell::types::{BasicType, BasicTypeEnum, StructType};
 use inkwell::values::PointerValue;
 use std::collections::HashMap;
+use inkwell::AddressSpace;
 
 // mod cart_string;
 pub(crate) mod compiler;
@@ -25,6 +26,7 @@ mod statements;
 pub(crate) mod symbol_table;
 mod types;
 mod value;
+mod cart_string;
 
 type StructDefinition<'ctx> = (
     StructType<'ctx>,
@@ -39,6 +41,7 @@ type StructDefinition<'ctx> = (
 pub(crate) struct CodeGen<'ctx> {
     context: &'ctx Context,
     module: Module<'ctx>,
+    // std_module: Module<'ctx>,
     builder: Builder<'ctx>,
     symbol_table: SymbolTable<Value<'ctx>>,
     loaded_symbol_table: SymbolTable<Value<'ctx>>,
@@ -55,6 +58,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_or("main", |s| s.as_ref())
             .to_string();
         let module = context.create_module(&module_name_str);
+        // let std_module = context.create_module("cart_std");
 
         Self::add_std_functions(context, &module);
 
@@ -62,6 +66,7 @@ impl<'ctx> CodeGen<'ctx> {
         CodeGen {
             context,
             module,
+            // std_module,
             builder,
             symbol_table: SymbolTable::default(),
             loaded_symbol_table: SymbolTable::default(),
@@ -79,13 +84,13 @@ impl<'ctx> CodeGen<'ctx> {
                 .fn_type(&[context.i32_type().into()], false),
             None,
         );
-        // module.add_function(
-        //     "print_string",
-        //     context
-        //         .void_type()
-        //         .fn_type(&[context.ptr_type(AddressSpace::default()).into()], false),
-        //     None,
-        // );
+        module.add_function(
+            "print_string",
+            context
+                .void_type()
+                .fn_type(&[context.ptr_type(AddressSpace::default()).into()], false),
+            None,
+        );
         // module.add_function(
         //     "create_array",
         //     context

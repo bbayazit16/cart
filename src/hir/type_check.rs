@@ -19,6 +19,14 @@ impl<'a> TypeChecker {
     /// Resolve the types of the AST nodes.
     pub(crate) fn resolve_types(&mut self, ast: &'a ast::Program) -> hir::Program {
         for declaration in &ast.declarations {
+            if let ast::Declaration::StructDecl(ref struct_decl) = declaration {
+                let name = token_value!(&struct_decl.name, Identifier);
+                self.types
+                    .add(name.clone(), (Type::Struct(name.clone()), false));
+            }
+        }
+        
+        for declaration in &ast.declarations {
             if let ast::Declaration::FunctionDecl(ref function_decl) = declaration {
                 let function_signature = self.resolve_function_signature(function_decl);
                 // Register function signatures. This allows functions defined later in the source
@@ -646,7 +654,6 @@ impl<'a> TypeChecker {
             .collect::<Vec<(String, hir::Expression)>>();
 
         // Verify struct args
-
         match self.struct_fields.get(&struct_name) {
             Some(field_types) => {
                 if fields.len() != field_types.len() {
@@ -904,7 +911,7 @@ impl<'a> TypeChecker {
             return if arg_types.len() > params.len() {
                 // Original arguments are longer than the provided arguments.
                 // Then the expected type is the one in `arg_types`.
-                // 
+                //
                 // TODO: Panic due to index out of bounds when:
                 // func empty_func(x: int) {
                 //     0;

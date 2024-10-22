@@ -7,6 +7,8 @@ macro_rules! token_value {
             $crate::token::TokenType::String(ref s) => s.to_string(),
             $crate::token::TokenType::Integer(ref s) => s.to_string(),
             $crate::token::TokenType::Float(ref s) => s.to_string(),
+            $crate::token::TokenType::True => "true".to_string(),
+            $crate::token::TokenType::False => "false".to_string(),
             _ => unreachable!(),
         }
     };

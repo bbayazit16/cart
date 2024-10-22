@@ -7,7 +7,7 @@ use inkwell::values::BasicValueEnum;
 pub(super) struct Value<'ctx> {
     pub type_enum: BasicTypeEnum<'ctx>,
     pub basic_value: BasicValueEnum<'ctx>,
-    pub is_r_value: bool,
+    pub is_l_value: bool,
 }
 
 impl<'ctx> Value<'ctx> {
@@ -16,13 +16,13 @@ impl<'ctx> Value<'ctx> {
         Self {
             type_enum,
             basic_value,
-            is_r_value: false,
+            is_l_value: false,
         }
     }
 
-    /// Set the value as an r-value.
-    pub(super) fn as_r_value(mut self) -> Self {
-        self.is_r_value = true;
+    /// Set the value as an l-value.
+    pub(super) fn as_l_value(mut self) -> Self {
+        self.is_l_value = true;
         self
     }
 }

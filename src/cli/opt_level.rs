@@ -22,6 +22,6 @@ impl From<OptimizationLevel> for inkwell::OptimizationLevel {
 impl Default for OptimizationLevel {
     fn default() -> Self {
         // ;)
-        Self::Aggressive
+        Self::Default
     }
 }

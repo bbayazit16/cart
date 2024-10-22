@@ -24,7 +24,7 @@ impl<'ctx> CodeGen<'ctx> {
     fn generate_let_stmt(&mut self, name: &String, ty: &Type, value: &Expression) {
         // Unwrapping below is safe, as type checker ensures that unit types are not assigned.
         let mut r_value = self.generate_expression(value).unwrap();
-        self.as_l_value(&mut r_value);
+        self.as_r_value(&mut r_value);
 
         let llvm_type = r_value.type_enum;
 

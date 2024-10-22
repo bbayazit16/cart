@@ -9,8 +9,8 @@ mod cart_array;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct CartStringRepr {
-    pub ref_count: i32,
-    pub length: i32,
+    pub ref_count: i64,
+    pub length: i64,
     pub data: *const u8,
 }
 

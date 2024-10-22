@@ -1,9 +1,10 @@
+use crate::codegen::value::Value;
 use crate::codegen::CodeGen;
 use crate::hir::Type;
 use inkwell::types::{
     AnyType, AnyTypeEnum, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType,
 };
-use crate::codegen::value::Value;
+use inkwell::AddressSpace;
 
 impl<'ctx> CodeGen<'ctx> {
     /// Converts the type to Inkwell AnyTypeEnum.
@@ -16,14 +17,26 @@ impl<'ctx> CodeGen<'ctx> {
             Type::Float => self.context.f32_type().as_any_type_enum(),
             Type::Float64 => self.context.f64_type().as_any_type_enum(),
             Type::Bool => self.context.bool_type().as_any_type_enum(),
-            Type::String => todo!(),
+            Type::String => self
+                .context
+                .ptr_type(AddressSpace::default())
+                .as_any_type_enum(),
+            // self
+            //     .context
+            //     .struct_type(
+            //         &[
+            //             self.context.i32_type().into(), // Reference count
+            //             self.context.i32_type().into(), // Length
+            //             self.context.ptr_type(AddressSpace::default()).into(), // Pointer to string data
+            //         ],
+            //         false,
+            //     )
+            //     .as_any_type_enum(),
             Type::Unit => self.context.void_type().as_any_type_enum(),
             Type::Array(_) => todo!(),
             Type::Struct(struct_name) => self
-                .struct_definition_table
-                .get(struct_name)
-                .unwrap()
-                .0
+                .context
+                .ptr_type(AddressSpace::default())
                 .as_any_type_enum(),
             Type::Enum(_) => todo!(),
             Type::Error(_) => todo!(),
@@ -67,20 +80,21 @@ impl<'ctx> CodeGen<'ctx> {
             None => self.context.void_type().fn_type(&param_types, false),
         }
     }
-    
-    /// Set the value as an l-value. If already an l-value, do nothing.
-    pub(super) fn as_l_value(&mut self, value: &mut Value<'ctx>) {
-        if value.is_r_value {
-            let loaded_var = self.builder
+
+    /// Set the value as an r-value. If already an r-value, do nothing.
+    pub(super) fn as_r_value(&mut self, value: &mut Value<'ctx>) {
+        if value.is_l_value {
+            let loaded_var = self
+                .builder
                 .build_load(
                     value.type_enum,
                     value.basic_value.into_pointer_value(),
                     "cast_l_value",
                 )
                 .unwrap();
-    
+
             value.basic_value = loaded_var;
-            value.is_r_value = false;
+            value.is_l_value = false;
         }
     }
 }

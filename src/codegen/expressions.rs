@@ -2,7 +2,8 @@ use crate::codegen::value::Value;
 use crate::codegen::CodeGen;
 use crate::hir::{BinaryOp, Block, Expression, Type};
 use inkwell::types::BasicType;
-use inkwell::values::{BasicMetadataValueEnum, BasicValue};
+use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum};
+use inkwell::AddressSpace;
 
 impl<'ctx> CodeGen<'ctx> {
     /// Generates the LLVM IR for an expression.
@@ -77,7 +78,7 @@ impl<'ctx> CodeGen<'ctx> {
             for (name, mut variable) in variables {
                 // Create a new entry block alloca for the variable.
                 // Add the alloca to the symbol table, which can then be loaded.
-                self.as_l_value(&mut variable);
+                self.as_r_value(&mut variable);
                 let alloca = self.create_entry_block_alloca(
                     variable.type_enum,
                     format!("alloca_input_var_{}", name).as_str(),
@@ -100,7 +101,7 @@ impl<'ctx> CodeGen<'ctx> {
             let mut v = self
                 .generate_expression(expr_)
                 .expect("Type error unverified by type checker: return expression has no value");
-            self.as_l_value(&mut v);
+            self.as_r_value(&mut v);
             v
         });
 
@@ -138,7 +139,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .bool_type()
                 .const_int(Self::bool_value(value), false)
                 .as_basic_value_enum(),
-            Type::String => todo!(),
+            Type::String => self.generate_string_literal(value),
             Type::Unit => unimplemented!("unit type"),
             Type::Array(_) => todo!(),
             Type::Struct(_) => todo!(),
@@ -203,6 +204,100 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    /// Generates a string literal.
+    fn generate_string_literal(&self, value: &str) -> BasicValueEnum<'ctx> {
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
+        let i64_type = self.context.i64_type();
+
+        let string_length_llvm_int = i64_type.const_int(value.len() as u64, false);
+
+        // CartString: { i32, i32, i8* }
+        let cart_string_llvm_type = self.context.struct_type(
+            &[
+                i64_type.into(), // Reference count
+                i64_type.into(), // Length
+                ptr_type.into(), // Pointer to string data
+            ],
+            false,
+        );
+
+        // let cart_string_ptr = self.create_entry_block_alloca(
+        //     cart_string_llvm_type,
+        //     format!("cart_string_{}", value).as_str(),
+        // );
+        let cart_string_ptr = self.builder.build_malloc(
+            cart_string_llvm_type,
+            format!("cart_string_{}", value).as_str(),
+        ).unwrap();
+
+        // Initialize reference count to 1:
+        let ref_count_gep = self
+            .builder
+            .build_struct_gep(
+                cart_string_llvm_type,
+                cart_string_ptr,
+                0,
+                format!("ref_count_gep_{}", value).as_str(),
+            )
+            .unwrap();
+        self.builder
+            .build_store(ref_count_gep, i64_type.const_int(1, false))
+            .unwrap();
+
+        // Initialize length:
+        let length_gep = self
+            .builder
+            .build_struct_gep(
+                cart_string_llvm_type,
+                cart_string_ptr,
+                1,
+                format!("length_gep_{}", value).as_str(),
+            )
+            .unwrap();
+        self.builder
+            .build_store(length_gep, i64_type.const_int(value.len() as u64, false))
+            .unwrap();
+
+        // Initialize string data:
+        let char_arr = self
+            .builder
+            .build_array_malloc(
+                self.context.i8_type(),
+                string_length_llvm_int,
+                format!("bytes_array_{}", value).as_str(),
+            )
+            .unwrap();
+
+        // Now, char_arr is a pointer to the allocated memory. Copy the string into it.
+        for (i, byte) in value.bytes().enumerate() {
+            let gep_idx = i64_type.const_int(i as u64, false);
+            let byte_ptr = unsafe {
+                self.builder
+                    .build_gep(
+                        self.context.i8_type(),                               // Points to a byte
+                        char_arr,   // The pointer to the allocated memory
+                        &[gep_idx], // The index of the byte
+                        format!("byte_{}", byte as char).as_str(), // name
+                    )
+                    .expect("Could not build GEP")
+            };
+            self.builder
+                .build_store(
+                    byte_ptr,
+                    self.context.i8_type().const_int(byte as u64, false),
+                )
+                .unwrap_or_else(|_| panic!("Could not store string byte {}", byte));
+        }
+
+        let data_gep = self
+            .builder
+            .build_struct_gep(cart_string_llvm_type, cart_string_ptr, 2, "data_gep")
+            .unwrap();
+        self.builder.build_store(data_gep, char_arr).unwrap();
+
+        cart_string_ptr.as_basic_value_enum()
+    }
+
     /// Generates the LLVM IR for binary expressions.
     fn generate_binary(
         &mut self,
@@ -216,8 +311,8 @@ impl<'ctx> CodeGen<'ctx> {
         let mut left = self.generate_expression(left).unwrap();
         let mut right = self.generate_expression(right).unwrap();
 
-        self.as_l_value(&mut left);
-        self.as_l_value(&mut right);
+        self.as_r_value(&mut left);
+        self.as_r_value(&mut right);
 
         self.apply_binary_op(&left, left_type, op, &right, right_type, resulting_type)
     }
@@ -382,7 +477,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 None => {
                     let mut var_alloca = *self.symbol_table.get(name).unwrap();
-                    self.as_l_value(&mut var_alloca);
+                    self.as_r_value(&mut var_alloca);
                     let loaded = self
                         .builder
                         .build_load(
@@ -403,7 +498,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    // /// Generates LLVM IR for call expressions.
+    /// Generates LLVM IR for call expressions.
     fn generate_call_expr(
         &mut self,
         callee: &String,
@@ -417,7 +512,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map(|arg| {
                 // self.generate_expression(arg).unwrap().1.into()
                 let mut value = self.generate_expression(arg).unwrap();
-                self.as_l_value(&mut value);
+                self.as_r_value(&mut value);
                 value.basic_value.into()
             })
             .collect();
@@ -458,7 +553,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // TODO: Handle elif branches
         let mut condition = self.generate_expression(condition).unwrap();
-        self.as_l_value(&mut condition);
+        self.as_r_value(&mut condition);
 
         self.builder
             .build_conditional_branch(
@@ -469,6 +564,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         self.builder.position_at_end(then_block);
+        // TODO: Then block may not exist
         let then_value = self.generate_block(then_branch, Vec::new()).unwrap();
 
         self.builder.build_unconditional_branch(exit_block).unwrap();
@@ -509,7 +605,12 @@ impl<'ctx> CodeGen<'ctx> {
         struct_type: &Type,
         fields: &[(String, Expression)],
     ) -> Value<'ctx> {
-        let llvm_struct_type = self.to_basic_type_enum(struct_type).unwrap();
+        let llvm_struct_type = self
+            .struct_definition_table
+            .get(struct_name)
+            .unwrap()
+            .0
+            .as_basic_type_enum();
 
         let struct_ptr = self.create_entry_block_alloca(
             llvm_struct_type,
@@ -535,7 +636,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         Value::new(
             self.context
-                .ptr_type(inkwell::AddressSpace::default())
+                .ptr_type(AddressSpace::default())
                 .as_basic_type_enum(),
             struct_ptr.as_basic_value_enum(),
         )
@@ -551,8 +652,8 @@ impl<'ctx> CodeGen<'ctx> {
         returned_field_type: &Type,
     ) -> Value<'ctx> {
         let mut struct_object = self.generate_expression(object).unwrap();
-        self.as_l_value(&mut struct_object);
-        let struct_type = self.to_basic_type_enum(object_ty).unwrap();
+        self.as_r_value(&mut struct_object);
+        let struct_type = self.struct_definition_table.get(object_name).unwrap().0;
 
         let field_index = self.struct_field_index(object_name, field);
 
@@ -571,7 +672,7 @@ impl<'ctx> CodeGen<'ctx> {
             // self.context.ptr_type(inkwell::AddressSpace::default()).as_basic_type_enum(),
             gep.as_basic_value_enum(),
         )
-        .as_r_value()
+        .as_l_value()
         // TODO: Support multiple fields
     }
 
