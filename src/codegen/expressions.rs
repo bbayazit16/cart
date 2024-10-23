@@ -154,31 +154,6 @@ impl<'ctx> CodeGen<'ctx> {
             self.to_basic_type_enum(ty).unwrap(),
             literal_value,
         )
-        // match literal {
-        //     Literal::Integer(ref token) => {
-        //         let value = token_value!(token).parse::<i32>().unwrap();
-        //         let value = self
-        //             .context
-        //             .i32_type()
-        //             .const_int(value as u64, false)
-        //             .into();
-        //         Some((
-        //             BasicTypeEnum::IntType(self.context.i32_type()).into(),
-        //             value,
-        //         ))
-        //     }
-        //     Literal::String(ref token) => {
-        //         let value = token_value!(token).to_string();
-        //         let string_ptr: PointerValue<'ctx> =
-        //             CartString::from_string(self.context, &self.builder, &value);
-        //         let bte =
-        //             BasicTypeEnum::PointerType(self.context.ptr_type(AddressSpace::default()));
-        //         // CartType is not marked as alloca, because Strings are passed around by reference
-        //         // by default.
-        //         Some((bte.into(), string_ptr.as_basic_value_enum()))
-        //     }
-        //     _ => unimplemented!("Other literal types"),
-        // }
     }
 
     /// Detects base and converts a string to an integer value.
@@ -221,14 +196,10 @@ impl<'ctx> CodeGen<'ctx> {
             false,
         );
 
-        // let cart_string_ptr = self.create_entry_block_alloca(
-        //     cart_string_llvm_type,
-        //     format!("cart_string_{}", value).as_str(),
-        // );
-        let cart_string_ptr = self.builder.build_malloc(
+        let cart_string_ptr = self.create_entry_block_alloca(
             cart_string_llvm_type,
-            format!("cart_string_{}", value).as_str(),
-        ).unwrap();
+            format!("cart_string_\"{}\"_ptr", value).as_str(),
+        );
 
         // Initialize reference count to 1:
         let ref_count_gep = self
@@ -274,7 +245,7 @@ impl<'ctx> CodeGen<'ctx> {
             let byte_ptr = unsafe {
                 self.builder
                     .build_gep(
-                        self.context.i8_type(),                               // Points to a byte
+                        self.context.i8_type(),                    // Points to a byte
                         char_arr,   // The pointer to the allocated memory
                         &[gep_idx], // The index of the byte
                         format!("byte_{}", byte as char).as_str(), // name
@@ -295,7 +266,16 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         self.builder.build_store(data_gep, char_arr).unwrap();
 
-        cart_string_ptr.as_basic_value_enum()
+        let loaded = self
+            .builder
+            .build_load(
+                cart_string_llvm_type,
+                cart_string_ptr,
+                format!("cart_string_\"{}\"_value", value).as_str(),
+            )
+            .unwrap();
+
+        loaded.as_basic_value_enum()
     }
 
     /// Generates the LLVM IR for binary expressions.
@@ -513,7 +493,20 @@ impl<'ctx> CodeGen<'ctx> {
                 // self.generate_expression(arg).unwrap().1.into()
                 let mut value = self.generate_expression(arg).unwrap();
                 self.as_r_value(&mut value);
-                value.basic_value.into()
+                // TODO: Temporary hack - separate extern modules
+                if callee == "print_string" {
+                    let alloca = self.create_entry_block_alloca(
+                        value.type_enum,
+                        "alloca_print_string"
+                    );
+
+                    self.builder
+                        .build_store(alloca, value.basic_value)
+                        .unwrap();
+                    alloca.into()
+                } else {
+                    value.basic_value.into()
+                }
             })
             .collect();
 
@@ -634,11 +627,18 @@ impl<'ctx> CodeGen<'ctx> {
                 .unwrap();
         }
 
+        let loaded = self
+            .builder
+            .build_load(
+                llvm_struct_type,
+                struct_ptr,
+                format!("loaded_struct_{}", struct_name).as_str(),
+            )
+            .unwrap();
+
         Value::new(
-            self.context
-                .ptr_type(AddressSpace::default())
-                .as_basic_type_enum(),
-            struct_ptr.as_basic_value_enum(),
+            self.to_basic_type_enum(struct_type).unwrap(),
+            loaded.as_basic_value_enum(),
         )
     }
 
@@ -651,8 +651,23 @@ impl<'ctx> CodeGen<'ctx> {
         field: &str,
         returned_field_type: &Type,
     ) -> Value<'ctx> {
-        let mut struct_object = self.generate_expression(object).unwrap();
-        self.as_r_value(&mut struct_object);
+        let struct_object = self.generate_expression(object).unwrap();
+        let struct_object_llvm_value = if struct_object.is_l_value {
+            struct_object.basic_value.into_pointer_value()
+        } else {
+            // Else, struct_object is a struct value.
+            let alloca = self.create_entry_block_alloca(
+                struct_object.type_enum,
+                format!("alloca_struct_{}", object_name).as_str(),
+            );
+
+            // Store the struct value (struct_object) in the alloca.
+            self.builder
+                .build_store(alloca, struct_object.basic_value)
+                .unwrap();
+            alloca
+        };
+
         let struct_type = self.struct_definition_table.get(object_name).unwrap().0;
 
         let field_index = self.struct_field_index(object_name, field);
@@ -661,7 +676,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_struct_gep(
                 struct_type,
-                struct_object.basic_value.into_pointer_value(),
+                struct_object_llvm_value,
                 field_index as u32,
                 field,
             )
@@ -669,7 +684,6 @@ impl<'ctx> CodeGen<'ctx> {
 
         Value::new(
             self.to_basic_type_enum(returned_field_type).unwrap(),
-            // self.context.ptr_type(inkwell::AddressSpace::default()).as_basic_type_enum(),
             gep.as_basic_value_enum(),
         )
         .as_l_value()

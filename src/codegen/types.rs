@@ -19,24 +19,22 @@ impl<'ctx> CodeGen<'ctx> {
             Type::Bool => self.context.bool_type().as_any_type_enum(),
             Type::String => self
                 .context
-                .ptr_type(AddressSpace::default())
+                .struct_type(
+                    &[
+                        self.context.i64_type().into(), // Reference count
+                        self.context.i64_type().into(), // Length
+                        self.context.ptr_type(AddressSpace::default()).into(), // Pointer to string data
+                    ],
+                    false,
+                )
                 .as_any_type_enum(),
-            // self
-            //     .context
-            //     .struct_type(
-            //         &[
-            //             self.context.i32_type().into(), // Reference count
-            //             self.context.i32_type().into(), // Length
-            //             self.context.ptr_type(AddressSpace::default()).into(), // Pointer to string data
-            //         ],
-            //         false,
-            //     )
-            //     .as_any_type_enum(),
             Type::Unit => self.context.void_type().as_any_type_enum(),
             Type::Array(_) => todo!(),
             Type::Struct(struct_name) => self
-                .context
-                .ptr_type(AddressSpace::default())
+                .struct_definition_table
+                .get(struct_name)
+                .unwrap()
+                .0
                 .as_any_type_enum(),
             Type::Enum(_) => todo!(),
             Type::Error(_) => todo!(),
