@@ -6,6 +6,10 @@ use va_list::VaList;
 mod cart_array;
 
 /// `CartStringRepr` is a C repr of the `CartString` struct used in the standard library.
+/// # String Layout
+/// - The first 64 bits indicate the reference count of the string.
+/// - The next 64 bits indicate the length of the string.
+/// - The last 8 bits indicate a pointer to the string data.
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct CartStringRepr {
