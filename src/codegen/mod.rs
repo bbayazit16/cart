@@ -15,10 +15,9 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::{BasicType, BasicTypeEnum, StructType};
 use inkwell::values::PointerValue;
-use std::collections::HashMap;
 use inkwell::AddressSpace;
+use std::collections::HashMap;
 
-// mod cart_string;
 pub(crate) mod compiler;
 mod declarations;
 mod expressions;
@@ -26,7 +25,6 @@ mod statements;
 pub(crate) mod symbol_table;
 mod types;
 mod value;
-mod cart_string;
 
 type StructDefinition<'ctx> = (
     StructType<'ctx>,
@@ -143,8 +141,14 @@ impl<'ctx> CodeGen<'ctx> {
         // > which makes analysis simpler.
         let entry_block = self.builder.get_insert_block().unwrap();
         let function = entry_block.get_parent().unwrap();
+        let first_bb = function.get_first_basic_block().unwrap();
+
         let entry_builder = self.context.create_builder();
-        entry_builder.position_at_end(function.get_first_basic_block().unwrap());
+
+        match entry_block.get_first_instruction() {
+            Some(first) => entry_builder.position_before(&first),
+            None => entry_builder.position_at_end(first_bb),
+        }
 
         entry_builder
             .build_alloca(ty, name)
