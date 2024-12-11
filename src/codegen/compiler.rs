@@ -1,6 +1,7 @@
 use crate::cli::CommonOptions;
 use crate::codegen::CodeGen;
 use crate::hir::Program;
+use inkwell::module::Module;
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
@@ -22,17 +23,7 @@ pub(crate) fn compile(hir: &mut Program, run: bool, options: &CommonOptions) {
         .expect("Failed to initialize native target");
 
     if options.emit_ir {
-        eprintln!();
-        eprintln!("==========================================");
-        eprintln!("================ Begin IR ================");
-        eprintln!("==========================================");
-        eprintln!();
-        module.print_to_stderr();
-        eprintln!();
-        eprintln!("========================================");
-        eprintln!("================ End IR ================");
-        eprintln!("========================================");
-        eprintln!();
+        print_ir_to_stderr(module);
     }
 
     let output_file_path = options
@@ -78,6 +69,20 @@ pub(crate) fn compile(hir: &mut Program, run: bool, options: &CommonOptions) {
     if run {
         run_executable(&output_executable_path);
     }
+}
+
+fn print_ir_to_stderr(module: &Module) {
+    eprintln!();
+    eprintln!("==========================================");
+    eprintln!("================ Begin IR ================");
+    eprintln!("==========================================");
+    eprintln!();
+    module.print_to_stderr();
+    eprintln!();
+    eprintln!("========================================");
+    eprintln!("================ End IR ================");
+    eprintln!("========================================");
+    eprintln!();
 }
 
 /// Links an object file into an executable.
