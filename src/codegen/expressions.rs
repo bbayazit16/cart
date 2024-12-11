@@ -184,7 +184,7 @@ impl<'ctx> CodeGen<'ctx> {
         let ptr_type = self.context.ptr_type(AddressSpace::default());
         let i64_type = self.context.i64_type();
 
-        let string_length_llvm_int = i64_type.const_int(value.len() as u64, false);
+        let string_length_llvm_int = self.context.i32_type().const_int(value.len() as u64, false);
 
         // CartString: { i32, i32, i8* }
         let cart_string_llvm_type = self.context.struct_type(
@@ -213,6 +213,8 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         self.builder
             .build_store(ref_count_gep, i64_type.const_int(1, false))
+            .unwrap()
+            .set_alignment(8)
             .unwrap();
 
         // Initialize length:
@@ -227,6 +229,8 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         self.builder
             .build_store(length_gep, i64_type.const_int(value.len() as u64, false))
+            .unwrap()
+            .set_alignment(8)
             .unwrap();
 
         // Initialize string data:
@@ -264,7 +268,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_struct_gep(cart_string_llvm_type, cart_string_ptr, 2, "data_gep")
             .unwrap();
-        self.builder.build_store(data_gep, char_arr).unwrap();
+        self.builder.build_store(data_gep, char_arr).unwrap().set_alignment(8).unwrap();
 
         let loaded = self
             .builder
@@ -310,123 +314,174 @@ impl<'ctx> CodeGen<'ctx> {
         // TODO: Only supports integer types for now. Add more types in the future.
         // This involves a larger match expression.
 
-        let res = match op {
-            BinaryOp::Add => self
-                .builder
-                .build_int_add(
-                    left.basic_value.into_int_value(),
-                    right.basic_value.into_int_value(),
-                    "add",
-                )
-                .unwrap(),
-            BinaryOp::Sub => self
-                .builder
-                .build_int_sub(
-                    left.basic_value.into_int_value(),
-                    right.basic_value.into_int_value(),
-                    "sub",
-                )
-                .unwrap(),
-            BinaryOp::Mul => self
-                .builder
-                .build_int_mul(
-                    left.basic_value.into_int_value(),
-                    right.basic_value.into_int_value(),
-                    "mul",
-                )
-                .unwrap(),
-            BinaryOp::Div => self
-                .builder
-                .build_int_unsigned_div(
-                    left.basic_value.into_int_value(),
-                    right.basic_value.into_int_value(),
-                    "div",
-                )
-                .unwrap(),
-            BinaryOp::Mod => self
-                .builder
-                .build_int_signed_rem(
-                    left.basic_value.into_int_value(),
-                    right.basic_value.into_int_value(),
-                    "srem",
-                )
-                .unwrap(),
-            BinaryOp::And => self
-                .builder
-                .build_and(
-                    left.basic_value.into_int_value(),
-                    right.basic_value.into_int_value(),
-                    "and",
-                )
-                .unwrap(),
-            BinaryOp::Or => self
-                .builder
-                .build_or(
-                    left.basic_value.into_int_value(),
-                    right.basic_value.into_int_value(),
-                    "or",
-                )
-                .unwrap(),
-            BinaryOp::Eq => self
-                .builder
-                .build_int_compare(
-                    inkwell::IntPredicate::EQ,
-                    left.basic_value.into_int_value(),
-                    right.basic_value.into_int_value(),
-                    "eq",
-                )
-                .unwrap(),
-            BinaryOp::Neq => self
-                .builder
-                .build_int_compare(
-                    inkwell::IntPredicate::NE,
-                    left.basic_value.into_int_value(),
-                    right.basic_value.into_int_value(),
-                    "ne",
-                )
-                .unwrap(),
-            BinaryOp::Lt => self
-                .builder
-                .build_int_compare(
-                    inkwell::IntPredicate::SLT,
-                    left.basic_value.into_int_value(),
-                    right.basic_value.into_int_value(),
-                    "slt",
-                )
-                .unwrap(),
-            BinaryOp::Gt => self
-                .builder
-                .build_int_compare(
-                    inkwell::IntPredicate::SGT,
-                    left.basic_value.into_int_value(),
-                    right.basic_value.into_int_value(),
-                    "sgt",
-                )
-                .unwrap(),
-            BinaryOp::Le => self
-                .builder
-                .build_int_compare(
-                    inkwell::IntPredicate::SLE,
-                    left.basic_value.into_int_value(),
-                    right.basic_value.into_int_value(),
-                    "sle",
-                )
-                .unwrap(),
-            BinaryOp::Ge => self
-                .builder
-                .build_int_compare(
-                    inkwell::IntPredicate::SGE,
-                    left.basic_value.into_int_value(),
-                    right.basic_value.into_int_value(),
-                    "sge",
-                )
-                .unwrap(),
+        let res = match left_type {
+            Type::Int | Type::Int64 | Type::Int128 | Type::Int256 => match op {
+                BinaryOp::Add => self
+                    .builder
+                    .build_int_add(
+                        left.basic_value.into_int_value(),
+                        right.basic_value.into_int_value(),
+                        "add",
+                    )
+                    .unwrap(),
+                BinaryOp::Sub => self
+                    .builder
+                    .build_int_sub(
+                        left.basic_value.into_int_value(),
+                        right.basic_value.into_int_value(),
+                        "sub",
+                    )
+                    .unwrap(),
+                BinaryOp::Mul => self
+                    .builder
+                    .build_int_mul(
+                        left.basic_value.into_int_value(),
+                        right.basic_value.into_int_value(),
+                        "mul",
+                    )
+                    .unwrap(),
+                BinaryOp::Div => self
+                    .builder
+                    .build_int_unsigned_div(
+                        left.basic_value.into_int_value(),
+                        right.basic_value.into_int_value(),
+                        "div",
+                    )
+                    .unwrap(),
+                BinaryOp::Mod => self
+                    .builder
+                    .build_int_signed_rem(
+                        left.basic_value.into_int_value(),
+                        right.basic_value.into_int_value(),
+                        "srem",
+                    )
+                    .unwrap(),
+                BinaryOp::And => self
+                    .builder
+                    .build_and(
+                        left.basic_value.into_int_value(),
+                        right.basic_value.into_int_value(),
+                        "and",
+                    )
+                    .unwrap(),
+                BinaryOp::Or => self
+                    .builder
+                    .build_or(
+                        left.basic_value.into_int_value(),
+                        right.basic_value.into_int_value(),
+                        "or",
+                    )
+                    .unwrap(),
+                BinaryOp::Eq => self
+                    .builder
+                    .build_int_compare(
+                        inkwell::IntPredicate::EQ,
+                        left.basic_value.into_int_value(),
+                        right.basic_value.into_int_value(),
+                        "eq",
+                    )
+                    .unwrap(),
+                BinaryOp::Neq => self
+                    .builder
+                    .build_int_compare(
+                        inkwell::IntPredicate::NE,
+                        left.basic_value.into_int_value(),
+                        right.basic_value.into_int_value(),
+                        "ne",
+                    )
+                    .unwrap(),
+                BinaryOp::Lt => self
+                    .builder
+                    .build_int_compare(
+                        inkwell::IntPredicate::SLT,
+                        left.basic_value.into_int_value(),
+                        right.basic_value.into_int_value(),
+                        "slt",
+                    )
+                    .unwrap(),
+                BinaryOp::Gt => self
+                    .builder
+                    .build_int_compare(
+                        inkwell::IntPredicate::SGT,
+                        left.basic_value.into_int_value(),
+                        right.basic_value.into_int_value(),
+                        "sgt",
+                    )
+                    .unwrap(),
+                BinaryOp::Le => self
+                    .builder
+                    .build_int_compare(
+                        inkwell::IntPredicate::SLE,
+                        left.basic_value.into_int_value(),
+                        right.basic_value.into_int_value(),
+                        "sle",
+                    )
+                    .unwrap(),
+                BinaryOp::Ge => self
+                    .builder
+                    .build_int_compare(
+                        inkwell::IntPredicate::SGE,
+                        left.basic_value.into_int_value(),
+                        right.basic_value.into_int_value(),
+                        "sge",
+                    )
+                    .unwrap(),
+            }
+            .as_basic_value_enum(),
+            Type::String => match op {
+                BinaryOp::Add => {
+                    let left_alloca = self.create_entry_block_alloca(
+                        left.basic_value.get_type(),
+                        "alloca_left_string",
+                    );
+                    self.builder
+                        .build_store(left_alloca, left.basic_value)
+                        .unwrap();
+
+                    let right_alloca = self.create_entry_block_alloca(
+                        right.basic_value.get_type(),
+                        "alloca_right_string",
+                    );
+                    self.builder
+                        .build_store(right_alloca, right.basic_value)
+                        .unwrap();
+
+                    // TODO: Separate module to prevent function name collision
+                    // pub unsafe extern "C" fn __concat_strings(
+                    //     s1: *const CartStringRepr,
+                    //     s2: *const CartStringRepr,
+                    // ) -> *mut CartStringRepr {
+                    let std_concat_strings = self.module.get_function("__concat_strings").unwrap();
+                    let args = [left_alloca.into(), right_alloca.into()];
+
+                    let call_site = self
+                        .builder
+                        .build_call(std_concat_strings, &args, "call_concat_strings")
+                        .unwrap();
+
+                    let ptr_result = call_site
+                        .try_as_basic_value()
+                        .unwrap_left()
+                        .into_pointer_value();
+
+                    let loaded = self
+                        .builder
+                        .build_load(
+                            // String type
+                            self.to_basic_type_enum(resulting_type).unwrap(),
+                            ptr_result,
+                            "loaded_concat_strings",
+                        )
+                        .unwrap();
+
+                    loaded
+                }
+                e => unimplemented!("{:?}", e),
+            },
+            e => unimplemented!("{:?}", e),
         };
 
-        Value::new(
-            self.to_basic_type_enum(left_type).unwrap(),
-            res.as_basic_value_enum(),
-        )
+        Value::new(self.to_basic_type_enum(left_type).unwrap(), res)
     }
 
     /// Generates LLVM IR for variable expressions.
@@ -495,14 +550,10 @@ impl<'ctx> CodeGen<'ctx> {
                 self.as_r_value(&mut value);
                 // TODO: Temporary hack - separate extern modules
                 if callee == "print_string" {
-                    let alloca = self.create_entry_block_alloca(
-                        value.type_enum,
-                        "alloca_print_string"
-                    );
+                    let alloca =
+                        self.create_entry_block_alloca(value.type_enum, "alloca_print_string");
 
-                    self.builder
-                        .build_store(alloca, value.basic_value)
-                        .unwrap();
+                    self.builder.build_store(alloca, value.basic_value).unwrap();
                     alloca.into()
                 } else {
                     value.basic_value.into()
@@ -533,6 +584,8 @@ impl<'ctx> CodeGen<'ctx> {
         else_branch: &Option<Box<Block>>,
         ty: &Type,
     ) -> Option<Value<'ctx>> {
+        // TODO: Only build phi if both branches return a non-unit value.
+
         let function = self
             .builder
             .get_insert_block()
