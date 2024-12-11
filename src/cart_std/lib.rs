@@ -43,6 +43,48 @@ pub unsafe extern "C" fn print_string(s: *const CartStringRepr) {
     println!("{}", rust_string);
 }
 
+/// Concatenates two strings and returns the result.
+/// This function allocates a new string on the heap.
+///
+/// # Safety
+///
+/// This function is marked unsafe because it dereferences raw pointers.
+/// If null, the type validator must have already caught the error before this function is called.
+#[no_mangle]
+pub unsafe extern "C" fn __concat_strings(
+    s1: *const CartStringRepr,
+    s2: *const CartStringRepr,
+) -> *mut CartStringRepr {
+    if s1.is_null() || s2.is_null() {
+        panic!("Received null pointer in concat_strings");
+    }
+    
+    let s1 = unsafe { &*s1 };
+    let s2 = unsafe { &*s2 };
+
+    let s1_bytes = unsafe { std::slice::from_raw_parts(s1.data, s1.length as usize) };
+    let s2_bytes = unsafe { std::slice::from_raw_parts(s2.data, s2.length as usize) };
+
+    let new_string_length = (s1.length + s2.length) as usize;
+    let mut new_string_byte_slice = Vec::with_capacity(new_string_length);
+    new_string_byte_slice.extend_from_slice(s1_bytes);
+    new_string_byte_slice.extend_from_slice(s2_bytes);
+    
+    // Why leaking is needed:
+    // After the __concat_strings function returns, the new_string_bytes vector is dropped as it
+    // goes out of scope. We don't want the memory to be deallocated, this is handled by
+    // Cart when the string is no longer needed.
+    let new_string_bytes = new_string_byte_slice.leak();
+
+    let new_string = Box::new(CartStringRepr {
+        ref_count: 1,
+        length: new_string_bytes.len() as i64,
+        data: new_string_bytes.as_ptr(),
+    });
+
+    Box::into_raw(new_string)
+}
+
 /// Formats and prints a string to the standard output.
 /// The function takes variadic arguments, and formats the string with the arguments provided.
 ///
