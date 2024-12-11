@@ -89,6 +89,17 @@ impl<'ctx> CodeGen<'ctx> {
                 .fn_type(&[context.ptr_type(AddressSpace::default()).into()], false),
             None,
         );
+        module.add_function(
+            "__concat_strings",
+            context.ptr_type(AddressSpace::default()).fn_type(
+                &[
+                    context.ptr_type(AddressSpace::default()).into(),
+                    context.ptr_type(AddressSpace::default()).into(),
+                ],
+                false,
+            ),
+            None,
+        );
         // module.add_function(
         //     "create_array",
         //     context
