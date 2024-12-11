@@ -6,7 +6,7 @@
 //!
 //! The module provides the definition for symbol table, used to store variables
 //! and their values during codegen.
-
+use crate::codegen::std_module::StdModuleBuilder;
 use crate::codegen::symbol_table::SymbolTable;
 use crate::codegen::value::Value;
 use crate::hir;
@@ -15,13 +15,13 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::{BasicType, BasicTypeEnum, StructType};
 use inkwell::values::PointerValue;
-use inkwell::AddressSpace;
 use std::collections::HashMap;
 
 pub(crate) mod compiler;
 mod declarations;
 mod expressions;
 mod statements;
+mod std_module;
 pub(crate) mod symbol_table;
 mod types;
 mod value;
@@ -39,7 +39,6 @@ type StructDefinition<'ctx> = (
 pub(crate) struct CodeGen<'ctx> {
     context: &'ctx Context,
     module: Module<'ctx>,
-    // std_module: Module<'ctx>,
     builder: Builder<'ctx>,
     symbol_table: SymbolTable<Value<'ctx>>,
     loaded_symbol_table: SymbolTable<Value<'ctx>>,
@@ -56,79 +55,22 @@ impl<'ctx> CodeGen<'ctx> {
             .map_or("main", |s| s.as_ref())
             .to_string();
         let module = context.create_module(&module_name_str);
-        // let std_module = context.create_module("cart_std");
-
-        Self::add_std_functions(context, &module);
+        
+        // Adds std function declarations to the module.
+        let module = StdModuleBuilder::new(context, module)
+            .add_print()
+            .add_string()
+            .build();
 
         let builder = context.create_builder();
         CodeGen {
             context,
             module,
-            // std_module,
             builder,
             symbol_table: SymbolTable::default(),
             loaded_symbol_table: SymbolTable::default(),
             struct_definition_table: SymbolTable::default(),
         }
-    }
-
-    /// Adds the standard library functions to the module.
-    /// The standard library functions are defined in the `cart_std` module.
-    fn add_std_functions(context: &'ctx Context, module: &Module<'ctx>) {
-        module.add_function(
-            "print_number",
-            context
-                .void_type()
-                .fn_type(&[context.i32_type().into()], false),
-            None,
-        );
-        module.add_function(
-            "print_string",
-            context
-                .void_type()
-                .fn_type(&[context.ptr_type(AddressSpace::default()).into()], false),
-            None,
-        );
-        module.add_function(
-            "__concat_strings",
-            context.ptr_type(AddressSpace::default()).fn_type(
-                &[
-                    context.ptr_type(AddressSpace::default()).into(),
-                    context.ptr_type(AddressSpace::default()).into(),
-                ],
-                false,
-            ),
-            None,
-        );
-        // module.add_function(
-        //     "create_array",
-        //     context
-        //         .ptr_type(AddressSpace::default())
-        //         .fn_type(&[context.i32_type().into()], false),
-        //     None,
-        // );
-        // module.add_function(
-        //     "push_to_array",
-        //     context.void_type().fn_type(
-        //         &[
-        //             context.ptr_type(AddressSpace::default()).into(),
-        //             context.i32_type().into(),
-        //         ],
-        //         false,
-        //     ),
-        //     None,
-        // );
-        // module.add_function(
-        //     "push_to_array_multiple",
-        //     context.void_type().fn_type(
-        //         &[
-        //             context.ptr_type(AddressSpace::default()).into(),
-        //             context.i32_type().into(),
-        //         ],
-        //         false,
-        //     ),
-        //     None,
-        // );
     }
 
     /// Generate the LLVM IR from the program AST.
@@ -137,6 +79,11 @@ impl<'ctx> CodeGen<'ctx> {
         for declaration in program.declarations.iter() {
             self.generate_declaration(declaration);
         }
+
+          self.module.verify().unwrap_or_else(|err| {
+            panic!("Module verification failed: {:?}", err);
+        });
+
         &self.module
     }
 

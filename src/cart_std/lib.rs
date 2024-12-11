@@ -58,7 +58,7 @@ pub unsafe extern "C" fn __concat_strings(
     if s1.is_null() || s2.is_null() {
         panic!("Received null pointer in concat_strings");
     }
-    
+
     let s1 = unsafe { &*s1 };
     let s2 = unsafe { &*s2 };
 
@@ -69,7 +69,7 @@ pub unsafe extern "C" fn __concat_strings(
     let mut new_string_byte_slice = Vec::with_capacity(new_string_length);
     new_string_byte_slice.extend_from_slice(s1_bytes);
     new_string_byte_slice.extend_from_slice(s2_bytes);
-    
+
     // Why leaking is needed:
     // After the __concat_strings function returns, the new_string_bytes vector is dropped as it
     // goes out of scope. We don't want the memory to be deallocated, this is handled by

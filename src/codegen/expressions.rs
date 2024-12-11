@@ -268,7 +268,11 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_struct_gep(cart_string_llvm_type, cart_string_ptr, 2, "data_gep")
             .unwrap();
-        self.builder.build_store(data_gep, char_arr).unwrap().set_alignment(8).unwrap();
+        self.builder
+            .build_store(data_gep, char_arr)
+            .unwrap()
+            .set_alignment(8)
+            .unwrap();
 
         let loaded = self
             .builder
@@ -311,7 +315,7 @@ impl<'ctx> CodeGen<'ctx> {
         right_type: &Type,
         resulting_type: &Type,
     ) -> Value<'ctx> {
-        // TODO: Only supports integer types for now. Add more types in the future.
+        // TODO: Only supports integer (& String concat) types for now. Add more types in the future.
         // This involves a larger match expression.
 
         let res = match left_type {
@@ -427,7 +431,7 @@ impl<'ctx> CodeGen<'ctx> {
                     )
                     .unwrap(),
             }
-            .as_basic_value_enum(),
+                .as_basic_value_enum(),
             Type::String => match op {
                 BinaryOp::Add => {
                     let left_alloca = self.create_entry_block_alloca(
@@ -446,12 +450,11 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_store(right_alloca, right.basic_value)
                         .unwrap();
 
-                    // TODO: Separate module to prevent function name collision
-                    // pub unsafe extern "C" fn __concat_strings(
-                    //     s1: *const CartStringRepr,
-                    //     s2: *const CartStringRepr,
-                    // ) -> *mut CartStringRepr {
-                    let std_concat_strings = self.module.get_function("__concat_strings").unwrap();
+                    let std_concat_strings = self
+                        .module
+                        .get_function("__concat_strings")
+                        .expect("__concat_strings not included in STD builder");
+
                     let args = [left_alloca.into(), right_alloca.into()];
 
                     let call_site = self
@@ -494,13 +497,13 @@ impl<'ctx> CodeGen<'ctx> {
                     function.as_global_value().as_basic_value_enum(),
                 ),
                 _ => panic!("Void assigned to variable, where?"), // Some(return_type) => (
-                                                                  //     return_type.as_basic_type_enum().into(),
-                                                                  //     function.as_global_value().as_basic_value_enum(),
-                                                                  // ),
-                                                                  // None => (
-                                                                  //     CartType::void(self.context),
-                                                                  //     function.as_global_value().as_basic_value_enum(),
-                                                                  // ),
+                //     return_type.as_basic_type_enum().into(),
+                //     function.as_global_value().as_basic_value_enum(),
+                // ),
+                // None => (
+                //     CartType::void(self.context),
+                //     function.as_global_value().as_basic_value_enum(),
+                // ),
             }
         } else {
             // Then standard variable in the symbol table.
@@ -522,7 +525,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 "loaded_{}",
                                 var_alloca.basic_value.get_name().to_str().unwrap()
                             )
-                            .as_str(),
+                                .as_str(),
                         )
                         .unwrap();
                     let value = Value::new(var_alloca.type_enum, loaded.as_basic_value_enum());
@@ -540,19 +543,31 @@ impl<'ctx> CodeGen<'ctx> {
         arguments: &[Expression],
         return_type: &Type,
     ) -> Option<Value<'ctx>> {
-        let callee_fn = self.module.get_function(callee).unwrap();
+        // TODO: Forbid redefinition of std publicly facing function in type checker
+        let callee_fn = self
+            .module
+            .get_function(callee)
+            .unwrap_or_else(|| panic!("Function {} not found", callee));
+
+        let param_types = callee_fn.get_type().get_param_types();
 
         let args: Vec<BasicMetadataValueEnum> = arguments
             .iter()
-            .map(|arg| {
+            .enumerate()
+            .map(|(param_index, arg)| {
                 // self.generate_expression(arg).unwrap().1.into()
                 let mut value = self.generate_expression(arg).unwrap();
                 self.as_r_value(&mut value);
-                // TODO: Temporary hack - separate extern modules
-                if callee == "print_string" {
-                    let alloca =
-                        self.create_entry_block_alloca(value.type_enum, "alloca_print_string");
 
+                // If the argument requires a pointer, create an entry block alloca, and
+                // store the value. Then, pass the alloca to the function.
+                // This is needed when the arguments are reference types, such as strings.
+                let param_type = param_types[param_index];
+                if param_type.is_pointer_type() {
+                    let alloca = self.create_entry_block_alloca(
+                        value.type_enum,
+                        format!("alloca_{}_{}", callee, param_index).as_str(),
+                    );
                     self.builder.build_store(alloca, value.basic_value).unwrap();
                     alloca.into()
                 } else {
@@ -739,7 +754,7 @@ impl<'ctx> CodeGen<'ctx> {
             self.to_basic_type_enum(returned_field_type).unwrap(),
             gep.as_basic_value_enum(),
         )
-        .as_l_value()
+            .as_l_value()
         // TODO: Support multiple fields
     }
 
