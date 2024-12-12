@@ -11,6 +11,7 @@ echo -e "\033[38;5;${colors[3]}m | |__| (_| | |  | |_  \033[0m"
 echo -e "\033[38;5;${colors[4]}m  \\____\\__,_|_|   \\__| \033[0m"
 echo -e "\033[38;5;${colors[5]}m                      \033[0m"
 
+# rm -rf /usr/local/bin/cart /usr/local/lib/cartlang
 BIN_DIR="/usr/local/bin"
 LIB_DIR="/usr/local/lib/cartlang"
 
@@ -82,8 +83,8 @@ if [[ -f "$BIN_DIR/cart" || -f "$LIB_DIR/libcartstd.a" ]]; then
     echo "This will overwrite and update the existing version."
   fi
 
-  echo -e "\033[31mThe installation will continue in 5 seconds. Press Ctrl+C to cancel.\033[0m"
-  sleep 5
+  echo -e "\033[31mThe installation will continue in 15 seconds. Press Ctrl+C to cancel.\033[0m"
+  sleep 15
 
   echo "Proceeding with installation..."
 fi
