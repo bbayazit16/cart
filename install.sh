@@ -147,3 +147,12 @@ echo ""
 echo -e "\033[38;5;46mInstallation complete! \033[0m"
 echo -e "\033[38;5;82mCompiler installed to \033[38;5;154m$BIN_DIR/cart\033[0m"
 echo -e "\033[38;5;82mStandard library installed to \033[38;5;154m$LIB_DIR/libcartstd.a\033[0m"
+
+echo ""
+
+echo -e "\033[31mTo start using CART, you must do one of the following:\033[0m"
+echo -e "\033[31m  - EITHER restart your terminal or create a new terminal window/session\033[0m"
+echo -e "\033[31m  - OR run one of the following commands, depending on your shell:\033[0m"
+echo -e "\033[31m      source ~/.bashrc\033[0m"
+echo -e "\033[31m      source ~/.bash_profile\033[0m"
+echo -e "\033[31m      source ~/.zshrc\033[0m"
