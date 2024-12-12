@@ -1,11 +1,11 @@
 [package]
 name = "cart"
-version = "0.1.0"
+version = "0.1.0-alpha"
 edition = "2021"
 
 [dependencies]
-thiserror = "1.0.61"
-clap = { version = "4.3", features = ["derive"] }
+thiserror = "2.0.6"
+clap = { version = "4.5.16", features = ["derive"] }
 inkwell = { version = "0.5.0", features = ["llvm18-0"] }
 va_list = "0.2.0"
 
