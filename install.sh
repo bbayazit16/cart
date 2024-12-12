@@ -82,11 +82,10 @@ if [[ -f "$BIN_DIR/cart" || -f "$LIB_DIR/libcartstd.a" ]]; then
     echo "This will overwrite and update the existing version."
   fi
 
-  read -p "Do you want to continue? (y/n): " CONFIRM < /dev/tty
-  if [[ "$CONFIRM" != "y" && "$CONFIRM" != "Y" && "$CONFIRM" != "yes" && "$CONFIRM" != "YES" ]]; then
-    echo "Installation canceled."
-    exit 0
-  fi
+  echo -e "\033[31mThe installation will continue in 5 seconds. Press Ctrl+C to cancel.\033[0m"
+  sleep 5
+
+  echo "Proceeding with installation..."
 fi
 
 echo "Downloading $RELEASE_FILE..."
