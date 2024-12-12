@@ -21,6 +21,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install LLVM
+        id: llvm-install
         run: |
           if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
             sudo apt-get update
@@ -28,10 +29,10 @@ jobs:
               chmod u+x llvm.sh && \
               sudo ./llvm.sh 18 && \
               sudo apt install -y libpolly-18-dev libz-dev
-            export LLVM_SYS_180_PREFIX=/usr/lib/llvm-18
+            echo "LLVM_SYS_PREFIX=/usr/lib/llvm-18" >> $GITHUB_OUTPUT
           else
             brew install llvm@18
-            export LLVM_SYS_180_PREFIX=$(brew --prefix llvm@18)
+            echo "LLVM_SYS_PREFIX=$(brew --prefix llvm@18)" >> $GITHUB_OUTPUT
           fi
 
       - name: Install Rust
@@ -41,8 +42,10 @@ jobs:
 
       - name: Build Cart
         env:
-          LLVM_SYS_180_PREFIX: ${{ env.LLVM_SYS_180_PREFIX }}
-        run: cargo build --release
+          LLVM_SYS_PREFIX: ${{ steps.llvm-install.outputs.LLVM_SYS_PREFIX }}
+        run: |
+          export LLVM_SYS_180_PREFIX=${LLVM_SYS_PREFIX}
+          cargo build --release
 
       - name: Package Files
         run: |
