@@ -27,7 +27,7 @@ jobs:
             wget https://apt.llvm.org/llvm.sh && \
               chmod u+x llvm.sh && \
               sudo ./llvm.sh 18 && \
-              sudo apt install -y libpolly-18-dev libz-dev
+              sudo apt install -y libpolly-18-dev libz-dev gcc-aarch64-linux-gnu
             echo "LLVM_SYS_PREFIX=/usr/lib/llvm-18" >> $GITHUB_OUTPUT
           else
             brew install llvm@18 zstd
