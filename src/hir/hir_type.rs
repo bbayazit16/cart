@@ -171,8 +171,8 @@ impl From<&TokenType> for BinaryOp {
             TokenType::Slash => BinaryOp::Div,
             // TODO: Exp
             TokenType::Percent => BinaryOp::Mod,
-            TokenType::Ampersand => BinaryOp::And,
-            TokenType::Pipe => BinaryOp::Or,
+            TokenType::AmpersandAmpersand => BinaryOp::And,
+            TokenType::PipePipe => BinaryOp::Or,
             TokenType::EqualEqual => BinaryOp::Eq,
             TokenType::BangEqual => BinaryOp::Neq,
             TokenType::LeftAngle => BinaryOp::Lt,

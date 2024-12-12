@@ -80,7 +80,8 @@ impl<'ctx> CodeGen<'ctx> {
             self.generate_declaration(declaration);
         }
 
-          self.module.verify().unwrap_or_else(|err| {
+        // self.module.print_to_stderr();
+        self.module.verify().unwrap_or_else(|err| {
             panic!("Module verification failed: {:?}", err);
         });
 
@@ -97,15 +98,13 @@ impl<'ctx> CodeGen<'ctx> {
         // > mem2reg only looks for alloca instructions in the entry block of the function.
         // > Being in the entry block guarantees that the alloca is only executed once,
         // > which makes analysis simpler.
-        let entry_block = self.builder.get_insert_block().unwrap();
-        let function = entry_block.get_parent().unwrap();
-        let first_bb = function.get_first_basic_block().unwrap();
-
+        let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+        let entry_block = function.get_first_basic_block().unwrap();
         let entry_builder = self.context.create_builder();
-
-        match entry_block.get_first_instruction() {
-            Some(first) => entry_builder.position_before(&first),
-            None => entry_builder.position_at_end(first_bb),
+        
+        match entry_block.get_first_instruction() { 
+            Some(first_instr) => entry_builder.position_before(&first_instr),
+            None => entry_builder.position_at_end(entry_block),
         }
 
         entry_builder

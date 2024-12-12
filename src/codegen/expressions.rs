@@ -1,6 +1,6 @@
 use crate::codegen::value::Value;
 use crate::codegen::CodeGen;
-use crate::hir::{BinaryOp, Block, Expression, Type};
+use crate::hir::{BinaryOp, Block, Expression, Type, UnaryOp};
 use inkwell::types::BasicType;
 use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum};
 use inkwell::AddressSpace;
@@ -11,6 +11,9 @@ impl<'ctx> CodeGen<'ctx> {
         match expr {
             Expression::Block(ref block) => self.generate_block(block, Vec::new()),
             Expression::Literal { ref value, ref ty } => Some(self.generate_literal(value, ty)),
+            Expression::Unary { ref expr, ref op, ref ty } => Some(
+                self.generate_unary(expr, op, ty)
+            ),
             Expression::Binary {
                 ref left,
                 ref left_type,
@@ -97,12 +100,11 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
-        let value = block.return_expr.as_ref().map(|expr_| {
-            let mut v = self
-                .generate_expression(expr_)
-                .expect("Type error unverified by type checker: return expression has no value");
-            self.as_r_value(&mut v);
-            v
+        let value = block.return_expr.as_ref().and_then(|expr_| {
+            self.generate_expression(expr_).map(|mut v| {
+                self.as_r_value(&mut v);
+                v
+            })
         });
 
         self.symbol_table.end_scope();
@@ -481,10 +483,111 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 e => unimplemented!("{:?}", e),
             },
+            Type::Bool => match op {
+                BinaryOp::And => {
+                    let left_int = self.builder.build_int_z_extend(
+                        left.basic_value.into_int_value(),
+                        self.context.i64_type(),
+                        "left_bool_to_int",
+                    ).unwrap();
+
+                    let right_int = self.builder.build_int_z_extend(
+                        right.basic_value.into_int_value(),
+                        self.context.i64_type(),
+                        "right_bool_to_int",
+                    ).unwrap();
+
+                    let and = self.builder.build_and(
+                        left_int,
+                        right_int,
+                        "and_bool",
+                    ).unwrap();
+
+                    let bool_result = self.builder.build_int_truncate(
+                        and,
+                        self.context.bool_type(),
+                        "and_bool_to_bool",
+                    ).unwrap();
+
+                    bool_result.as_basic_value_enum()
+                }
+                BinaryOp::Or => {
+                    let left_int = self.builder.build_int_z_extend(
+                        left.basic_value.into_int_value(),
+                        self.context.i64_type(),
+                        "left_bool_to_int",
+                    ).unwrap();
+
+                    let right_int = self.builder.build_int_z_extend(
+                        right.basic_value.into_int_value(),
+                        self.context.i64_type(),
+                        "right_bool_to_int",
+                    ).unwrap();
+
+                    let or = self.builder.build_or(
+                        left_int,
+                        right_int,
+                        "or_bool",
+                    ).unwrap();
+
+                    let bool_result = self.builder.build_int_truncate(
+                        or,
+                        self.context.bool_type(),
+                        "or_bool_to_bool",
+                    ).unwrap();
+
+                    bool_result.as_basic_value_enum()
+                }
+                e => unimplemented!("{:?}", e),
+            }
             e => unimplemented!("{:?}", e),
         };
 
         Value::new(self.to_basic_type_enum(left_type).unwrap(), res)
+    }
+    
+    /// Generates LLVM IR for unary expressions.
+    fn generate_unary(&mut self, expr: &Expression, op: &UnaryOp, ty: &Type) -> Value<'ctx> {
+        let mut value = self.generate_expression(expr).unwrap();
+        self.as_r_value(&mut value);
+        
+        match ty {
+            Type::Int | Type::Int64 | Type::Int128 | Type::Int256 | Type::Float | Type::Float64 => {
+                let res = match op {
+                    UnaryOp::Neg => self.builder.build_int_neg(
+                        value.basic_value.into_int_value(),
+                        "neg",
+                    ).unwrap(),
+                    UnaryOp::Not => panic!("Not unary operator not implemented for integers"),
+                };
+                
+                Value::new(self.to_basic_type_enum(ty).unwrap(), res.as_basic_value_enum())
+            },
+            Type::Bool => {
+                let int_value = self.builder.build_int_z_extend(
+                    value.basic_value.into_int_value(),
+                    self.context.i64_type(),
+                    "bool_to_int",
+                ).unwrap();
+                
+                let res = match op {
+                    UnaryOp::Not => self.builder.build_not(
+                        int_value,
+                        "not",
+                    ).unwrap(),
+                    UnaryOp::Neg => panic!("Negation unary operator not implemented for booleans"),
+                };
+                
+                let bool_result = self.builder.build_int_truncate(
+                    res,
+                    self.context.bool_type(),
+                    "int_to_bool",
+                ).unwrap();
+                
+                Value::new(self.to_basic_type_enum(ty).unwrap(), bool_result.as_basic_value_enum())
+            },
+            _ => unreachable!("Unary operator not implemented for type {:?}", ty),
+        }
     }
 
     /// Generates LLVM IR for variable expressions.
@@ -508,31 +611,21 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             // Then standard variable in the symbol table.
             // It exists, as verified by the type checker.
-            match self.loaded_symbol_table.get(name) {
-                Some(var_loaded_value) => {
-                    // TODO: Check if needs l_value casting
-                    *var_loaded_value
-                }
-                None => {
-                    let mut var_alloca = *self.symbol_table.get(name).unwrap();
-                    self.as_r_value(&mut var_alloca);
-                    let loaded = self
-                        .builder
-                        .build_load(
-                            var_alloca.type_enum,
-                            var_alloca.basic_value.into_pointer_value(),
-                            format!(
-                                "loaded_{}",
-                                var_alloca.basic_value.get_name().to_str().unwrap()
-                            )
-                                .as_str(),
-                        )
-                        .unwrap();
-                    let value = Value::new(var_alloca.type_enum, loaded.as_basic_value_enum());
-                    self.loaded_symbol_table.add(name.to_string(), value);
-                    value
-                }
-            }
+            let mut var_alloca = *self.symbol_table.get(name).unwrap();
+            self.as_r_value(&mut var_alloca);
+            let loaded = self
+                .builder
+                .build_load(
+                    var_alloca.type_enum,
+                    var_alloca.basic_value.into_pointer_value(),
+                    format!(
+                        "loaded_{}",
+                        var_alloca.basic_value.get_name().to_str().unwrap()
+                    )
+                        .as_str(),
+                )
+                .unwrap();
+            Value::new(var_alloca.type_enum, loaded.as_basic_value_enum())
         }
     }
 
@@ -599,7 +692,21 @@ impl<'ctx> CodeGen<'ctx> {
         else_branch: &Option<Box<Block>>,
         ty: &Type,
     ) -> Option<Value<'ctx>> {
-        // TODO: Only build phi if both branches return a non-unit value.
+        // Useful note on phi nodes for the future:
+        // https://stackoverflow.com/questions/67079122/how-to-produce-phi-instruction-in-clang-for-llvm-ir
+        
+        // If the type is Unit, then there is no result to return.
+        let is_unit = matches!(ty, Type::Unit);
+
+        // Allocate a result variable if not a Unit type
+        let result_alloca = if !is_unit {
+            Some(self.create_entry_block_alloca(
+                self.to_basic_type_enum(ty).unwrap(),
+                "conditional_result",
+            ))
+        } else {
+            None
+        };
 
         let function = self
             .builder
@@ -608,55 +715,70 @@ impl<'ctx> CodeGen<'ctx> {
             .get_parent()
             .expect("No parent");
 
+        let continue_block = self.context.append_basic_block(function, "continue");
+
+        let condition_value = self.generate_expression(condition).unwrap();
         let then_block = self.context.append_basic_block(function, "then");
-        let else_block = self.context.append_basic_block(function, "else");
-        let exit_block = self.context.append_basic_block(function, "exit");
-
-        // TODO: Handle elif branches
-        let mut condition = self.generate_expression(condition).unwrap();
-        self.as_r_value(&mut condition);
-
+        let else_block = else_branch
+            .as_ref()
+            .map(|_| self.context.append_basic_block(function, "else"));
+        
+        let initial_false_target = else_block.unwrap_or(continue_block);
+        
         self.builder
             .build_conditional_branch(
-                condition.basic_value.into_int_value(),
+                condition_value.basic_value.into_int_value(),
                 then_block,
-                else_block,
+                initial_false_target,
             )
             .unwrap();
 
         self.builder.position_at_end(then_block);
-        // TODO: Then block may not exist
-        let then_value = self.generate_block(then_branch, Vec::new()).unwrap();
+        let then_value = self.generate_block(then_branch, Vec::new());
 
-        self.builder.build_unconditional_branch(exit_block).unwrap();
-        self.builder.position_at_end(else_block);
-
-        let else_value = if let Some(ref else_block) = else_branch {
-            self.generate_block(else_block, Vec::new())
-        } else {
-            None
-        };
-
-        self.builder.build_unconditional_branch(exit_block).unwrap();
-        self.builder.position_at_end(exit_block);
-
-        let phi_node = self
-            .builder
-            .build_phi(self.context.i32_type(), "if_phi")
-            .unwrap();
-
-        phi_node.add_incoming(&[(&then_value.basic_value, then_block)]);
-        if let Some(else_value) = else_value {
-            phi_node.add_incoming(&[(&else_value.basic_value, else_block)]);
+        // If not unit, then we must have a return value that needs to be stored
+        if let (Some(result_alloca), Some(then_val)) = (result_alloca, then_value) {
+            self.builder
+                .build_store(result_alloca, then_val.basic_value)
+                .unwrap();
         }
 
-        // then_type == else_value.0
-        // (then_type, phi_node.as_basic_value())
-        Some(Value::new(
-            // ty.to_basic_type_enum(&self.context).unwrap(),
-            then_value.type_enum,
-            phi_node.as_basic_value(),
-        ))
+        self.builder
+            .build_unconditional_branch(continue_block)
+            .unwrap();
+
+        if let Some(else_block_ast) = else_branch {
+            let else_block = else_block.unwrap();
+            self.builder.position_at_end(else_block);
+
+            let else_value = self.generate_block(else_block_ast, Vec::new());
+
+            if let (Some(result_alloca), Some(else_val)) = (result_alloca, else_value) {
+                self.builder
+                    .build_store(result_alloca, else_val.basic_value)
+                    .unwrap();
+            }
+
+            self.builder
+                .build_unconditional_branch(continue_block)
+                .unwrap();
+        }
+
+        self.builder.position_at_end(continue_block);
+
+        if !is_unit {
+            result_alloca.map(|alloca| {
+                let ty_bte = self.to_basic_type_enum(ty).unwrap();
+                let loaded_value = self
+                    .builder
+                    .build_load(ty_bte, alloca, "conditional_result_load")
+                    .unwrap();
+
+                Value::new(ty_bte, loaded_value)
+            })
+        } else {
+            None
+        }
     }
 
     /// Generates LLVM IR for struct literals.

@@ -42,8 +42,13 @@ impl<'a> TypeChecker {
             declarations.push(self.resolve_declaration(declaration));
         }
 
+        let should_exit = self.errors.len() > 0;
         for error in self.errors.iter() {
             self.reporter.report(error);
+        }
+        
+        if should_exit {
+            std::process::exit(1);
         }
 
         hir::Program { declarations }
