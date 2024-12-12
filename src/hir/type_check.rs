@@ -25,7 +25,7 @@ impl<'a> TypeChecker {
                     .add(name.clone(), (Type::Struct(name.clone()), false));
             }
         }
-        
+
         for declaration in &ast.declarations {
             if let ast::Declaration::FunctionDecl(ref function_decl) = declaration {
                 let function_signature = self.resolve_function_signature(function_decl);
@@ -42,11 +42,11 @@ impl<'a> TypeChecker {
             declarations.push(self.resolve_declaration(declaration));
         }
 
-        let should_exit = self.errors.len() > 0;
+        let should_exit = !self.errors.is_empty();
         for error in self.errors.iter() {
             self.reporter.report(error);
         }
-        
+
         if should_exit {
             std::process::exit(1);
         }
@@ -710,6 +710,14 @@ impl<'a> TypeChecker {
     ) -> hir::Expression {
         let object = self.resolve_expr(&struct_access.object);
         let object_ty = object.resulting_type();
+        // TODO: If unresolved, return empty expression FOR NOW.
+        if object_ty == Type::Unit {
+            return hir::Expression::Block(Box::new(hir::Block {
+                declarations: vec![],
+                return_expr: None,
+                return_type: Type::Unit,
+            }));
+        }
 
         let object_name = Self::get_object_name(&object_ty);
 
@@ -777,46 +785,21 @@ impl<'a> TypeChecker {
         let then_branch = self.resolve_block(&if_expr.then_branch, None);
         let then_branch_type = &then_branch.return_type.clone();
 
-        let elif_branches = if_expr
-            .elif_branches
-            .iter()
-            .map(|(condition_expr, block)| {
-                let condition = self.resolve_expr(condition_expr);
-                let block = self.resolve_block(block, None);
-                (condition, block)
-            })
-            .collect::<Vec<(hir::Expression, hir::Block)>>();
-
         let else_branch = if_expr
             .else_branch
             .as_ref()
             .map(|else_branch| Box::new(self.resolve_block(else_branch, None)));
 
-        // Check that all elif branch types are the same
-        let elif_branch_type = elif_branches
-            .iter()
-            .map(|(_, block)| &block.return_type)
-            .fold(then_branch_type, |acc, ty| {
-                // TODO: a custom error message?
-                self.report_type_error(acc, ty, if_expr.span);
-                acc
-            });
-
-        let return_types_match = if let Some(ref else_branch) = else_branch {
+        if let Some(ref else_branch) = else_branch {
             let else_branch_type = &else_branch.return_type;
-            then_branch_type == elif_branch_type && elif_branch_type == else_branch_type
-        } else {
-            then_branch_type == elif_branch_type
-        };
-
-        if !return_types_match {
-            self.report_type_error(then_branch_type, elif_branch_type, if_expr.span);
+            if then_branch_type != else_branch_type {
+                self.report_type_error(then_branch_type, else_branch_type, if_expr.span);
+            }
         }
 
         hir::Expression::If {
             condition: Box::new(condition),
             then_branch: Box::new(then_branch),
-            elif_branches,
             else_branch,
             ty: then_branch_type.clone(), // All branches have the same type
         }

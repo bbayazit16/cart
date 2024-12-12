@@ -42,31 +42,32 @@ impl Parser {
     }
 
     // ifExpr         → "if" expression block
-    //                  ( "elif" expression block )*
+    //                  ( "else" "if" expression block )*
     //                  ( "else" block )?
     //                | matchExpr ;
     fn parse_if_expr(&mut self) -> Result<ast::Expr, CompileError> {
         if self.match_if() {
             let starting_span = self.advance().span;
-
             let condition = Box::new(self.parse_expr());
             let then_branch = self.parse_block()?;
             let mut ending_span = then_branch.span;
 
-            let mut elif_branches = Vec::new();
-            while self.match_elif() {
-                self.advance();
-                let elif_condition = self.parse_expr();
-                let block = self.parse_block()?;
-                ending_span = block.span;
-                elif_branches.push((elif_condition, block));
-            }
-
             let else_branch = if self.match_else() {
                 self.advance();
-                let parsed_block = self.parse_block()?;
-                ending_span = parsed_block.span;
-                Some(parsed_block)
+                if self.match_if() {
+                    // If it's an `else if`, recursively parse the if expression
+                    let parsed_if = self.parse_if_expr()?;
+                    Some(ast::Block {
+                        declarations: vec![],
+                        span: parsed_if.span(),
+                        return_expr: Some(Box::new(parsed_if)),
+                    })
+                } else {
+                    // Otherwise, final "else" block
+                    let parsed_block = self.parse_block()?;
+                    ending_span = parsed_block.span;
+                    Some(parsed_block)
+                }
             } else {
                 None
             };
@@ -74,7 +75,6 @@ impl Parser {
             Ok(ast::Expr::If(ast::IfExpr {
                 condition,
                 then_branch,
-                elif_branches,
                 else_branch,
                 span: starting_span.merge(&ending_span),
             }))

@@ -31,10 +31,9 @@ impl<'ctx> CodeGen<'ctx> {
             Expression::If {
                 ref condition,
                 ref then_branch,
-                ref elif_branches,
                 ref else_branch,
                 ref ty,
-            } => self.generate_if_expr(condition, then_branch, elif_branches, else_branch, ty),
+            } => self.generate_if_expr(condition, then_branch, else_branch, ty),
             Expression::StructLiteral {
                 ref struct_name,
                 ref struct_type,
@@ -688,7 +687,6 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         condition: &Expression,
         then_branch: &Block,
-        elif_branches: &[(Expression, Block)],
         else_branch: &Option<Box<Block>>,
         ty: &Type,
     ) -> Option<Value<'ctx>> {

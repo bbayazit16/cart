@@ -179,7 +179,6 @@ pub(crate) struct StructAccessExpr {
 pub(crate) struct IfExpr {
     pub condition: Box<Expr>,
     pub then_branch: Block,
-    pub elif_branches: Vec<(Expr, Block)>,
     pub else_branch: Option<Block>,
     pub span: Span,
 }

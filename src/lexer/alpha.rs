@@ -174,7 +174,6 @@ impl Lexer {
             "struct" => basic_token!(self, Struct, start),
             "match" => basic_token!(self, Match, start),
             "else" => basic_token!(self, Else, start),
-            "elif" => basic_token!(self, Elif, start),
             "false" => basic_token!(self, False, start),
             "true" => basic_token!(self, True, start),
             "func" => basic_token!(self, Func, start),

@@ -89,7 +89,6 @@ pub(crate) enum TokenType {
     Struct,     // struct
     Match,      // match
     Else,       // else
-    Elif,       // elif
     False,      // false
     True,       // true
     Func,       // func

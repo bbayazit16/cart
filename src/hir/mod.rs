@@ -197,7 +197,6 @@ pub(crate) enum Expression {
     If {
         condition: Box<Expression>,
         then_branch: Box<Block>,
-        elif_branches: Vec<(Expression, Block)>,
         else_branch: Option<Box<Block>>,
         ty: Type,
     },

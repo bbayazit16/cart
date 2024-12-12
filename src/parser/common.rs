@@ -111,7 +111,6 @@ generate_match_impl! {
     match_eof => TokenType::Eof,
     match_else => TokenType::Else,
     match_equal => TokenType::Equal,
-    match_elif => TokenType::Elif,
     match_if => TokenType::If,
     match_match => TokenType::Match,
     match_bang => TokenType::Bang,
