@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 #[derive(clap::Parser, Debug)]
 #[command(name = "cart", about = "The Cart compiler.")]
+#[clap(version)]
 pub(crate) struct Cli {
     #[command(subcommand)]
     pub command: Commands,
