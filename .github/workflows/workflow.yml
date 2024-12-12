@@ -2,12 +2,17 @@ name: Build and Release Cart
 
 on:
   push:
-    branches:
-      - master
+    tags:
+      - "v*.*.*"
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, macos-latest ]
+        arch: [ x86_64, arm64 ]
 
     steps:
       - name: Checkout code
@@ -17,35 +22,46 @@ jobs:
 
       - name: Install LLVM
         run: |
-          sudo apt-get update
-          wget https://apt.llvm.org/llvm.sh && \
-            chmod u+x llvm.sh && \
-            sudo ./llvm.sh 18 && \
-            sudo apt install -y libpolly-18-dev libz-dev
-          export LLVM_SYS_180_PREFIX=/usr/lib/llvm-18
+          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+            sudo apt-get update
+            wget https://apt.llvm.org/llvm.sh && \
+              chmod u+x llvm.sh && \
+              sudo ./llvm.sh 18 && \
+              sudo apt install -y libpolly-18-dev libz-dev
+            export LLVM_SYS_180_PREFIX=/usr/lib/llvm-18
+          else
+            brew install llvm@18
+            export LLVM_SYS_180_PREFIX=$(brew --prefix llvm@18)
 
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
 
-      - name: Build Compiler
+      - name: Build Cart
         env:
-          LLVM_SYS_180_PREFIX: /usr/lib/llvm-18
-        run: cargo build --release
+          LLVM_SYS_180_PREFIX: ${{ env.LLVM_SYS_180_PREFIX }}
+        run: cargo build --release --target ${{ matrix.arch }}
 
       - name: Package Files
         run: |
           mkdir -p dist/bin dist/lib
           cp target/release/cart dist/bin/
           cp target/release/libcartstd.a dist/lib/
-          tar -czf cartlang.tar.gz -C dist .
+          tar -czf cartlang-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz -C dist .
 
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          name: cartlang-artifact
-          path: cartlang.tar.gz
-          overwrite: true
-          compression-level: 6
-          retention-days: 90
+          files: |
+            cartlang-${{ github.ref_name }}-ubuntu-latest-x86_64.tar.gz
+            cartlang-${{ github.ref_name }}-ubuntu-latest-arm64.tar.gz
+            cartlang-${{ github.ref_name }}-macos-latest-x86_64.tar.gz
+            cartlang-${{ github.ref_name }}-macos-latest-arm64.tar.gz
+          body: "Release of Cart Compiler version ${{ github.ref_name }}."
+          token: ${{ secrets.GITHUB_TOKEN }}
