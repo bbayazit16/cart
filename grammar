@@ -58,9 +58,9 @@ assignment     → ( ( ifExpr "." ) | ( matchExpr "." ) | ( call "." ) )?
                | arrayAccess "=" expression ;
 
 ifExpr         → "if" expression block 
-                 ( "elif" expression block )*
+                 ( "else" "if" expression block )*
                  ( "else" block )? 
-               | matchExpr
+               | matchExpr ;
 
 matchExpr      → "match" expression "{" matchArmList? "}"
                | logicalOr ;
