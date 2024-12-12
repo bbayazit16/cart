@@ -32,6 +32,7 @@ jobs:
           else
             brew install llvm@18
             export LLVM_SYS_180_PREFIX=$(brew --prefix llvm@18)
+          fi
 
       - name: Install Rust
         uses: actions-rs/toolchain@v1
