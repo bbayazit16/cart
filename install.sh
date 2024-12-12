@@ -156,3 +156,4 @@ echo -e "\033[31m  - OR run one of the following commands, depending on your she
 echo -e "\033[31m      source ~/.bashrc\033[0m"
 echo -e "\033[31m      source ~/.bash_profile\033[0m"
 echo -e "\033[31m      source ~/.zshrc\033[0m"
+echo -e "\033[31m  - This applies to all of your current terminal sessions.\033[0m"
