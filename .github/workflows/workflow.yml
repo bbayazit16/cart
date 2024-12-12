@@ -11,8 +11,7 @@ jobs:
 
     strategy:
       matrix:
-        os: [ ubuntu-latest, macos-latest ]
-        arch: [ x86_64, arm64 ]
+        os: [ ubuntu-22.04, ubuntu-24.04-arm64, macos-13, macos-14 ]
 
     steps:
       - name: Checkout code
@@ -45,7 +44,7 @@ jobs:
           LLVM_SYS_PREFIX: ${{ steps.llvm-install.outputs.LLVM_SYS_PREFIX }}
         run: |
           export LLVM_SYS_180_PREFIX=${LLVM_SYS_PREFIX}
-          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+          if [[ "${{ matrix.os }}" == *"macos"* ]]; then
             export LIBRARY_PATH="$LIBRARY_PATH:$(brew --prefix zstd)/lib"
           fi
           cargo build --release
@@ -55,13 +54,13 @@ jobs:
           mkdir -p dist/bin dist/lib
           cp target/release/cart dist/bin/
           cp target/release/libcartstd.a dist/lib/
-          tar -czf cartlang-${{ matrix.os }}-${{ matrix.arch }}.tar.gz -C dist .
+          tar -czf cartlang-${{ matrix.os }}.tar.gz -C dist .
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: cart-build-${{ matrix.os }}-${{ matrix.arch }}
-          path: cartlang-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+          name: cart-build-${{ matrix.os }}
+          path: cartlang-${{ matrix.os }}.tar.gz
 
   release:
     needs: build
@@ -72,22 +71,29 @@ jobs:
       - name: Download Artifact for ubuntu-latest x86_64
         uses: actions/download-artifact@v4
         with:
-          name: cart-build-ubuntu-latest-x86_64
+          name: cart-build-ubuntu-22.04
 
       - name: Download Artifact for ubuntu-latest arm64
         uses: actions/download-artifact@v4
         with:
-          name: cart-build-ubuntu-latest-arm64
+          name: cart-build-ubuntu-24.04-arm64
 
       - name: Download Artifact for macos-latest x86_64
         uses: actions/download-artifact@v4
         with:
-          name: cart-build-macos-latest-x86_64
+          name: cart-build-macos-13
 
       - name: Download Artifact for macos-latest arm64
         uses: actions/download-artifact@v4
         with:
-          name: cart-build-macos-latest-arm64
+          name: cart-build-macos-14
+
+      - name: Rename Files
+        run: |
+          mv cart-build-ubuntu-22.04 cartlang-ubuntu-latest-x86_64.tar.gz
+          mv cart-build-ubuntu-24.04-arm64 cartlang-ubuntu-latest-arm64.tar.gz
+          mv cart-build-macos-13 cartlang-macos-latest-x86_64.tar.gz
+          mv cart-build-macos-14 cartlang-macos-latest-arm64.tar.gz
 
       - name: Create Release
         uses: ncipollo/release-action@v1
