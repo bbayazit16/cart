@@ -59,24 +59,25 @@ URL="https://github.com/$REPO/releases/latest/download/$RELEASE_FILE"
 if [[ -f "$BIN_DIR/cart" || -f "$LIB_DIR/libcartstd.a" ]]; then
   echo "An existing installation was found:"
 
-  if [[ -f "$BIN_DIR/cart" ]]; then
-    echo "- Compiler at $BIN_DIR/cart"
-    EXISTING_VERSION=$("$BIN_DIR/cart" -v 2>/dev/null || echo "unknown")
-    echo "  Existing version: $EXISTING_VERSION"
-  fi
+  LATEST_VERSION=$(curl -s https://api.github.com/repos/$REPO/releases/latest | grep '"tag_name":' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/')
 
   if [[ -f "$LIB_DIR/libcartstd.a" ]]; then
     echo "- Standard library at $LIB_DIR/libcartstd.a"
   fi
 
-  LATEST_VERSION=$(curl -s https://api.github.com/repos/$REPO/releases/latest | grep '"tag_name":' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/')
+  if [[ -f "$BIN_DIR/cart" ]]; then
+    echo "- Compiler at $BIN_DIR/cart"
+    EXISTING_VERSION=$("$BIN_DIR/cart" -v 2>/dev/null || echo "unknown")
+    echo "  Existing version: $EXISTING_VERSION"
+    echo "  Latest version: $LATEST_VERSION"
+  fi
 
-  echo "  Latest version: $LATEST_VERSION"
+  echo ""
 
   if [[ "$EXISTING_VERSION" == "$LATEST_VERSION" ]]; then
-    echo "The existing version is up to date. This will overwrite the installation."
+    echo "Your existing version is up to date. This will overwrite the installation."
   elif [[ "$EXISTING_VERSION" == "unknown" ]]; then
-    echo "The existing version is unknown. This will overwrite the installation."
+    echo "Your existing version is unknown. This will overwrite the installation."
   else
     echo "This will overwrite and update the existing version."
   fi
@@ -102,6 +103,47 @@ cp lib/libcartstd.a "$LIB_DIR/"
 echo "Cleaning up..."
 rm -rf "$RELEASE_FILE" bin lib
 
-echo "Installation complete!"
-echo "Compiler installed to $BIN_DIR/cart"
-echo "Standard library installed to $LIB_DIR/libcartstd.a"
+EXPORT_CMD="export CARTLIB_PATH=\"$LIB_DIR\""
+USER_SHELL=$(basename "$SHELL")
+
+update_shell_config() {
+    local shell_config="$1"
+
+    if [[ -f "$shell_config" ]]; then
+        if grep -q "$EXPORT_CMD" "$shell_config"; then
+            echo "CARTLIB_PATH is already set in $shell_config. Skipping."
+        else
+            echo "$EXPORT_CMD" >> "$shell_config"
+            echo "Added CARTLIB_PATH to $shell_config."
+        fi
+    fi
+}
+
+case "$USER_SHELL" in
+    bash)
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            [[ -f ~/.bashrc ]] && update_shell_config ~/.bashrc || update_shell_config ~/.bash_profile
+        else
+            update_shell_config ~/.bashrc
+        fi
+        ;;
+    zsh)
+        update_shell_config ~/.zshrc
+        ;;
+    fish)
+        echo "Fish shell detected. Please add the following to your Fish configuration manually:"
+        echo "set -x CARTLIB_PATH $LIB_DIR"
+        ;;
+    *)
+        echo "Unsupported shell: $USER_SHELL. Please set CARTLIB_PATH manually in your shell configuration:"
+        echo "$EXPORT_CMD"
+        ;;
+esac
+
+export CARTLIB_PATH="$LIB_DIR"
+
+echo ""
+
+echo -e "\033[38;5;46mInstallation complete! \033[0m"
+echo -e "\033[38;5;82mCompiler installed to \033[38;5;154m$BIN_DIR/cart\033[0m"
+echo -e "\033[38;5;82mStandard library installed to \033[38;5;154m$LIB_DIR/libcartstd.a\033[0m"

@@ -33,8 +33,27 @@ func main() {
 
 For the formal grammar, see [grammar](grammar).
 
-> [!NOTE]
-> The language is not intended to be a replacement for any language, and should not be used seriously.
+## Installation
+```shell
+curl -fsSL https://raw.githubusercontent.com/bbayazit16/cart/main/install.sh | bash
+```
+
+## Usage:
+
+```shell
+Usage: cart <COMMAND>
+
+Commands:
+  compile  Compile a file
+  run      Compile and run a file
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+## Future Plans
 
 TODO:
 
@@ -66,19 +85,13 @@ following:
 - [ ] More advanced error reporting
 - [ ] Standard Library
 
-## Compiler CLI Usage:
+## Development
 
-```shell
-Usage: cart <COMMAND>
+During development, make sure to set CARTLIB_PATH environment variable.
 
-Commands:
-  compile  Compile a file
-  run      Compile and run a file
-  help     Print this message or the help of the given subcommand(s)
+If you are running from the source code, this should typically be set to either `target/debug` or `target/release` depending on whether you are running in debug or release mode.
 
-Options:
-  -h, --help  Print help
-```
+To compile the standard library, run `cargo build` or `cargo build --release`.
 
 ## License
 
