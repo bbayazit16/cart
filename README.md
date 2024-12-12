@@ -35,7 +35,7 @@ For the formal grammar, see [grammar](grammar).
 
 ## Installation
 ```shell
-curl -fsSL https://raw.githubusercontent.com/bbayazit16/cart/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/bbayazit16/cart/master/install.sh | bash
 ```
 
 ## Usage:
