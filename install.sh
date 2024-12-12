@@ -67,7 +67,7 @@ if [[ -f "$BIN_DIR/cart" || -f "$LIB_DIR/libcartstd.a" ]]; then
 
   if [[ -f "$BIN_DIR/cart" ]]; then
     echo "- Compiler at $BIN_DIR/cart"
-    EXISTING_VERSION=$("$BIN_DIR/cart" -v 2>/dev/null || echo "unknown")
+    EXISTING_VERSION=$("$BIN_DIR/cart" -V 2>/dev/null || echo "unknown")
     echo "  Existing version: $EXISTING_VERSION"
     echo "  Latest version: $LATEST_VERSION"
   fi
@@ -82,7 +82,7 @@ if [[ -f "$BIN_DIR/cart" || -f "$LIB_DIR/libcartstd.a" ]]; then
     echo "This will overwrite and update the existing version."
   fi
 
-  read -p "Do you want to continue? (y/n): " CONFIRM
+  read -p "Do you want to continue? (y/n): " CONFIRM < /dev/tty
   if [[ "$CONFIRM" != "y" && "$CONFIRM" != "Y" && "$CONFIRM" != "yes" && "$CONFIRM" != "YES" ]]; then
     echo "Installation canceled."
     exit 0
