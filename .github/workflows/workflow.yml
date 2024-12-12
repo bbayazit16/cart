@@ -85,17 +85,16 @@ jobs:
 
       - name: Rename Files
         run: |
-          ls
-          mv cart-build-ubuntu-22.04 cartlang-ubuntu-latest-x86_64.tar.gz
-          mv cart-build-macos-13 cartlang-macos-latest-x86_64.tar.gz
-          mv cart-build-macos-14 cartlang-macos-latest-arm64.tar.gz
+          mv cartlang-ubuntu-22.04.tar.gz cartlang-ubuntu-x86_64.tar.gz
+          mv cartlang-macos-13.tar.gz cartlang-macos-x86_64.tar.gz
+          mv cartlang-macos-14.tar.gz cartlang-macos-arm64.tar.gz
 
       - name: Create Release
         uses: ncipollo/release-action@v1
         with:
           artifacts: |
-            cartlang-ubuntu-latest-x86_64.tar.gz
-            cartlang-macos-latest-x86_64.tar.gz
-            cartlang-macos-latest-arm64.tar.gz
+            cartlang-ubuntu-x86_64.tar.gz
+            cartlang-macos-x86_64.tar.gz
+            cartlang-macos-arm64.tar.gz
           body: "Release of Cart Compiler version ${{ github.ref_name }}."
           tag: ${{ github.ref_name }}
