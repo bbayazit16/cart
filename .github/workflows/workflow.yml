@@ -45,22 +45,33 @@ jobs:
           LLVM_SYS_PREFIX: ${{ steps.llvm-install.outputs.LLVM_SYS_PREFIX }}
         run: |
           export LLVM_SYS_180_PREFIX=${LLVM_SYS_PREFIX}
-          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+          if [[ "${{ matrix.os }}" == "macos-latest" && "${{ matrix.arch }}" == "x86_64" ]]; then
             export LIBRARY_PATH="$LIBRARY_PATH:$(brew --prefix zstd)/lib"
-            cargo build --release --target ${{ matrix.arch }}-apple-darwin
-          elif [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
-            cargo build --release --target ${{ matrix.arch }}-unknown-linux-gnu
+            cargo build --release --target x86_64-apple-darwin
+          elif [[ "${{ matrix.os }}" == "macos-latest" && "${{ matrix.arch }}" == "arm64" ]]; then
+            export LIBRARY_PATH="$LIBRARY_PATH:$(brew --prefix zstd)/lib"
+            cargo build --release --target aarch64-apple-darwin
+          elif [[ "${{ matrix.os }}" == "ubuntu-latest" && "${{ matrix.arch }}" == "x86_64" ]]; then
+            cargo build --release --target x86_64-unknown-linux-gnu
+          elif [[ "${{ matrix.os }}" == "ubuntu-latest" && "${{ matrix.arch }}" == "arm64" ]]; then
+            cargo build --release --target aarch64-unknown-linux-gnu
           fi
 
       - name: Package Files
         run: |
           mkdir -p dist/bin dist/lib
-          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
-            cp target/${{ matrix.arch }}-apple-darwin/release/cart dist/bin/
-            cp target/${{ matrix.arch }}-apple-darwin/release/libcartstd.a dist/lib/
-          elif [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
-            cp target/${{ matrix.arch }}-unknown-linux-gnu/release/cart dist/bin/
-            cp target/${{ matrix.arch }}-unknown-linux-gnu/release/libcartstd.a dist/lib/
+          if [[ "${{ matrix.os }}" == "macos-latest" && "${{ matrix.arch }}" == "x86_64" ]]; then
+            cp target/x86_64-apple-darwin/release/cart dist/bin/
+            cp target/x86_64-apple-darwin/release/libcartstd.a dist/lib/
+          elif [[ "${{ matrix.os }}" == "macos-latest" && "${{ matrix.arch }}" == "arm64" ]]; then
+            cp target/aarch64-apple-darwin/release/cart dist/bin/
+            cp target/aarch64-apple-darwin/release/libcartstd.a dist/lib/
+          elif [[ "${{ matrix.os }}" == "ubuntu-latest" && "${{ matrix.arch }}" == "x86_64" ]]; then
+            cp target/x86_64-unknown-linux-gnu/release/cart dist/bin/
+            cp target/x86_64-unknown-linux-gnu/release/libcartstd.a dist/lib/
+          elif [[ "${{ matrix.os }}" == "ubuntu-latest" && "${{ matrix.arch }}" == "arm64" ]]; then
+            cp target/aarch64-unknown-linux-gnu/release/cart dist/bin/
+            cp target/aarch64-unknown-linux-gnu/release/libcartstd.a dist/lib/
           fi
           tar -czf cartlang-${{ matrix.os }}-${{ matrix.arch }}.tar.gz -C dist .
 
