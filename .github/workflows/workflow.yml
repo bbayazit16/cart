@@ -1,0 +1,51 @@
+name: Build and Release Cart
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install LLVM
+        run: |
+          sudo apt-get update
+          wget https://apt.llvm.org/llvm.sh && \
+            chmod u+x llvm.sh && \
+            sudo ./llvm.sh 18 && \
+            sudo apt install -y libpolly-18-dev libz-dev
+          export LLVM_SYS_180_PREFIX=/usr/lib/llvm-18
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Build Compiler
+        env:
+          LLVM_SYS_180_PREFIX: /usr/lib/llvm-18
+        run: cargo build --release
+
+      - name: Package Files
+        run: |
+          mkdir -p dist/bin dist/lib
+          cp target/release/cart dist/bin/
+          cp target/release/libcartstd.a dist/lib/
+          tar -czf cartlang.tar.gz -C dist .
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cartlang-artifact
+          path: cartlang.tar.gz
+          overwrite: true
+          compression-level: 6
+          retention-days: 90
