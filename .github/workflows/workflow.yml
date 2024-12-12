@@ -55,13 +55,13 @@ jobs:
           mkdir -p dist/bin dist/lib
           cp target/release/cart dist/bin/
           cp target/release/libcartstd.a dist/lib/
-          tar -czf cartlang-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz -C dist .
+          tar -czf cartlang-${{ matrix.os }}-${{ matrix.arch }}.tar.gz -C dist .
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: cart-build-${{ matrix.os }}-${{ matrix.arch }}
-          path: cartlang-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+          path: cartlang-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
 
   release:
     needs: build
@@ -69,16 +69,33 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download Build Artifacts
+      - name: Download Artifact for ubuntu-latest x86_64
         uses: actions/download-artifact@v4
+        with:
+          name: cart-build-ubuntu-latest-x86_64
+
+      - name: Download Artifact for ubuntu-latest arm64
+        uses: actions/download-artifact@v4
+        with:
+          name: cart-build-ubuntu-latest-arm64
+
+      - name: Download Artifact for macos-latest x86_64
+        uses: actions/download-artifact@v4
+        with:
+          name: cart-build-macos-latest-x86_64
+
+      - name: Download Artifact for macos-latest arm64
+        uses: actions/download-artifact@v4
+        with:
+          name: cart-build-macos-latest-arm64
 
       - name: Create Release
         uses: ncipollo/release-action@v1
         with:
           artifacts: |
-            cartlang-${{ github.ref_name }}-ubuntu-latest-x86_64.tar.gz
-            cartlang-${{ github.ref_name }}-ubuntu-latest-arm64.tar.gz
-            cartlang-${{ github.ref_name }}-macos-latest-x86_64.tar.gz
-            cartlang-${{ github.ref_name }}-macos-latest-arm64.tar.gz
+            cartlang-ubuntu-latest-x86_64.tar.gz
+            cartlang-ubuntu-latest-arm64.tar.gz
+            cartlang-macos-latest-x86_64.tar.gz
+            cartlang-macos-latest-arm64.tar.gz
           body: "Release of Cart Compiler version ${{ github.ref_name }}."
           tag: ${{ github.ref_name }}
