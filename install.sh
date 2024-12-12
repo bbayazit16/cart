@@ -11,7 +11,6 @@ echo -e "\033[38;5;${colors[3]}m | |__| (_| | |  | |_  \033[0m"
 echo -e "\033[38;5;${colors[4]}m  \\____\\__,_|_|   \\__| \033[0m"
 echo -e "\033[38;5;${colors[5]}m                      \033[0m"
 
-# rm -rf /usr/local/bin/cart /usr/local/lib/cartlang
 BIN_DIR="/usr/local/bin"
 LIB_DIR="/usr/local/lib/cartlang"
 
