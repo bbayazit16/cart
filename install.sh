@@ -75,7 +75,9 @@ if [[ -f "$BIN_DIR/cart" || -f "$LIB_DIR/libcartstd.a" ]]; then
 
   echo ""
 
-  if [[ "$EXISTING_VERSION" == "$LATEST_VERSION" ]]; then
+  NORMALIZED_EXISTING_VERSION="${EXISTING_VERSION#cart }"
+  NORMALIZED_LATEST_VERSION="${LATEST_VERSION#v}"
+  if [[ "$NORMALIZED_EXISTING_VERSION" == "$NORMALIZED_LATEST_VERSION" ]]; then
     echo "Your existing version is up to date. This will overwrite the installation."
   elif [[ "$EXISTING_VERSION" == "unknown" ]]; then
     echo "Your existing version is unknown. This will overwrite the installation."
