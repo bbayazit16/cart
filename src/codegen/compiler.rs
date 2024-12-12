@@ -5,6 +5,7 @@ use inkwell::module::Module;
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
+use std::env;
 use std::path::{Path, PathBuf};
 
 /// Compiles the program into an executable.
@@ -87,11 +88,16 @@ fn print_ir_to_stderr(module: &Module) {
 
 /// Links an object file into an executable.
 fn link_object_file(object_file: &PathBuf, output_executable: &PathBuf) {
+    let lib_path = env::var("CARTLIB_PATH").unwrap_or_else(|_| {
+        println!("CARTLIB_PATH environment variablenot set. If you are running from the source code, \
+          set the environment variable to the path of the target/debug or target/release directory.");
+        std::process::exit(1);
+    });
     let status = std::process::Command::new("cc")
         .arg(object_file)
         .arg("-o")
         .arg(output_executable)
-        .arg("-L.")
+        .arg(format!("-L{}", lib_path))
         .arg("-lcartstd")
         .status()
         .expect("Failed to execute linker");
