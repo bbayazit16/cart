@@ -50,6 +50,7 @@ jobs:
           if [[ "${{ matrix.os }}" == "ubuntu-22.04" ]]; then
             rustup target add aarch64-unknown-linux-gnu
             cargo build --release
+            CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
             cargo build --release --target aarch64-unknown-linux-gnu
           else
             cargo build --release
