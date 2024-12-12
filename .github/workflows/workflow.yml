@@ -57,18 +57,28 @@ jobs:
           cp target/release/libcartstd.a dist/lib/
           tar -czf cartlang-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz -C dist .
 
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cart-build-${{ matrix.os }}-${{ matrix.arch }}
+          path: cartlang-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+
   release:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Release
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create Release
+        uses: ncipollo/release-action@v1
         with:
-          files: |
+          artifacts: |
             cartlang-${{ github.ref_name }}-ubuntu-latest-x86_64.tar.gz
             cartlang-${{ github.ref_name }}-ubuntu-latest-arm64.tar.gz
             cartlang-${{ github.ref_name }}-macos-latest-x86_64.tar.gz
             cartlang-${{ github.ref_name }}-macos-latest-arm64.tar.gz
           body: "Release of Cart Compiler version ${{ github.ref_name }}."
-          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref_name }}
