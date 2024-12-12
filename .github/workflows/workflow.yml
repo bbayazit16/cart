@@ -45,6 +45,9 @@ jobs:
           LLVM_SYS_PREFIX: ${{ steps.llvm-install.outputs.LLVM_SYS_PREFIX }}
         run: |
           export LLVM_SYS_180_PREFIX=${LLVM_SYS_PREFIX}
+          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            export LIBRARY_PATH="$LIBRARY_PATH:$(brew --prefix zstd)/lib"
+          fi
           cargo build --release
 
       - name: Package Files
