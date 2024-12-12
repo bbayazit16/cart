@@ -85,6 +85,7 @@ jobs:
 
       - name: Rename Files
         run: |
+          ls
           mv cart-build-ubuntu-22.04 cartlang-ubuntu-latest-x86_64.tar.gz
           mv cart-build-macos-13 cartlang-macos-latest-x86_64.tar.gz
           mv cart-build-macos-14 cartlang-macos-latest-arm64.tar.gz
