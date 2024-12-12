@@ -48,6 +48,7 @@ jobs:
             export LIBRARY_PATH="$LIBRARY_PATH:$(brew --prefix zstd)/lib"
           fi
           if [[ "${{ matrix.os }}" == "ubuntu-22.04" ]]; then
+            rustup target add aarch64-unknown-linux-gnu
             cargo build --release
             cargo build --release --target aarch64-unknown-linux-gnu
           else
