@@ -1,0 +1,11 @@
+[package]
+name = "cart-lsp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cart = { path = "../cartc" }
+
+[[bin]]
+name = "cart-lsp"
+path = "src/main.rs"
