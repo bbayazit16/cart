@@ -1,19 +1,15 @@
-[package]
-name = "cart"
-version = "0.1.0-alpha"
-edition = "2021"
+[workspace]
+resolver = "2"
+members = ["cartc", "cart_std", "cart-lsp"]
 
-[dependencies]
-thiserror = "2.0.6"
-clap = { version = "4.5.16", features = ["derive"] }
-inkwell = { version = "0.5.0", features = ["llvm18-0"] }
-va_list = "0.2.0"
+[profile.release]
+lto = "fat"
 
-[[bin]]
-name = "cart"
-path = "src/main.rs"
+[profile.release.package.cart_std]
+opt-level = "z"
+strip = "symbols"
 
-[lib]
-name = "cartstd"
-path = "src/cart_std/lib.rs"
-crate-type = ["staticlib"]
+[profile.release.package.cart]
+opt-level = 3
+codegen-units = 1
+strip = "symbols"

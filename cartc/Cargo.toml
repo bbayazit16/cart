@@ -1,0 +1,17 @@
+[package]
+name = "cart"
+version = "0.1.0-alpha"
+edition = "2021"
+
+[dependencies]
+thiserror = "2.0.6"
+clap = { version = "4.5.16", features = ["derive"] }
+inkwell = { version = "0.5.0", features = ["llvm18-0"] }
+
+[lib]
+name = "cart"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cart"
+path = "src/main.rs"
