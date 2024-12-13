@@ -34,9 +34,26 @@ func main() {
 For the formal grammar, see [grammar](grammar).
 
 ## Installation
+Cart requires LLVM 18 to be installed on your system.
+On MacOS, run:
+```shell
+brew install llvm@18
+```
+
+On Linux, run:
+```shell
+wget https://apt.llvm.org/llvm.sh && \
+chmod u+x llvm.sh && \
+sudo ./llvm.sh 18 && \
+sudo apt install -y libpolly-18-dev libz-dev`.
+```
+
+Then, run the following command to install Cart:
 ```shell
 curl -fsSL https://raw.githubusercontent.com/bbayazit16/cart/master/install.sh | bash
 ```
+
+Or, you may choose to directly install the binary from the releases page.
 
 ## Usage:
 
