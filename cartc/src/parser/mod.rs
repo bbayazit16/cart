@@ -57,15 +57,15 @@ mod types;
 /// - `token_queue`: A `VecDeque` of `Token`s that serves as a buffer for the tokens being processed.
 ///
 #[derive(Debug)]
-pub(crate) struct Parser<R: Reporter + Debug> {
-    lexer: Lexer<R>,
+pub struct Parser<'a, R: Reporter + Debug> {
+    lexer: Lexer<'a, R>,
     errors: Vec<CompileError>,
     token_queue: VecDeque<Token>,
 }
 
-impl<R: Reporter + Debug> Parser<R> {
+impl<'a, R: Reporter + Debug> Parser<'a, R> {
     /// Initialize a new parser using `FileContext`.
-    pub(crate) fn new(context: FileContext<R>) -> Self {
+    pub fn new(context: FileContext<'a, R>) -> Self {
         Parser {
             lexer: Lexer::new(context),
             errors: Vec::new(),

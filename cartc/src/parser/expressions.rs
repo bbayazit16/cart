@@ -4,7 +4,7 @@ use crate::parser::Parser;
 use crate::reporter::reporter_trait::Reporter;
 use std::fmt::Debug;
 
-impl<R: Reporter + Debug> Parser<R> {
+impl<'a, R: Reporter + Debug> Parser<'a, R> {
     // expression     → assignment ;
     pub(super) fn parse_expr(&mut self) -> ast::Expr {
         // self.parse_assignment()

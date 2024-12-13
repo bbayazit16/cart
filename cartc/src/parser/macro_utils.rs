@@ -5,7 +5,7 @@
 #[macro_export]
 macro_rules! generate_consume_impl {
     ($($name:ident => $pattern:pat, $expected:expr),+ $(,)?) => {
-        impl<R: Reporter + Debug> $crate::parser::Parser<R> {
+        impl<'a, R: Reporter + Debug> $crate::parser::Parser<'a, R> {
             $(
                 pub(super) fn $name(&mut self) -> Result<$crate::token::Token, CompileError> {
                     let token = self.peek()?;
@@ -32,7 +32,7 @@ macro_rules! generate_consume_impl {
 #[macro_export]
 macro_rules! generate_match_impl {
     ($($name:ident => $pattern:pat),+ $(,)?) => {
-        impl<R: Reporter + Debug> $crate::parser::Parser<R> {
+        impl<'a, R: Reporter + Debug> $crate::parser::Parser<'a, R> {
             $(
                 pub(super) fn $name(&mut self) -> bool {
                     let token = match self.peek() {

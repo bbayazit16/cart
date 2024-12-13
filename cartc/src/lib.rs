@@ -4,7 +4,7 @@ mod codegen;
 pub mod context;
 pub mod errors;
 mod hir;
-pub mod lexer;
+mod lexer;
 pub mod parser;
 pub mod reporter;
 mod token;

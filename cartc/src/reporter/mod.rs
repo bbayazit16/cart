@@ -35,14 +35,6 @@ pub(crate) struct ConsoleReporter {
 }
 
 impl Reporter for ConsoleReporter {
-    /// Initialize a reporter instance by passing in `file_path`,
-    /// which must implement AsRef<Path>.
-    fn new<P: AsRef<Path>>(file_path: P) -> ConsoleReporter {
-        ConsoleReporter {
-            file_path: file_path.as_ref().to_path_buf(),
-        }
-    }
-
     /// Report a `CompileError`.
     /// The function forwards the errors to `print_error`, with the `CompileError` converted
     /// into a string.
@@ -56,6 +48,14 @@ impl Reporter for ConsoleReporter {
 }
 
 impl ConsoleReporter {
+    /// Initialize a `ConsoleReporter` instance by passing in `file_path`,
+    /// which must implement AsRef<Path>.
+    pub(crate) fn new<P: AsRef<Path>>(file_path: P) -> ConsoleReporter {
+        ConsoleReporter {
+            file_path: file_path.as_ref().to_path_buf(),
+        }
+    }
+    
     /// Reports a Syntax Error to stderr.
     /// Forwards the message to `print_error`.
     fn report_syntax_error(&self, error: &SyntaxError) {

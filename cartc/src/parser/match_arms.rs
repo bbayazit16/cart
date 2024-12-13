@@ -4,7 +4,7 @@ use crate::parser::Parser;
 use crate::reporter::reporter_trait::Reporter;
 use std::fmt::Debug;
 
-impl<R: Reporter + Debug> Parser<R> {
+impl<'a, R: Reporter + Debug> Parser<'a, R> {
     // matchArmList   → matchArm ( "," matchArm )*
     pub(super) fn parse_match_arm_list(&mut self) -> Result<Vec<ast::MatchArm>, CompileError> {
         let mut arms = vec![self.parse_match_arm()?];

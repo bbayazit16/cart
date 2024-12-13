@@ -5,7 +5,7 @@ use crate::reporter::reporter_trait::Reporter;
 use crate::token::Token;
 use std::fmt::Debug;
 
-impl<R: Reporter + Debug> Parser<R> {
+impl<'a, R: Reporter + Debug> Parser<'a, R> {
     // pattern        → IDENTIFIER ( ( "(" identList ")" )? | ( "{" identList "}" ) )
     //                | "_" ;
     pub(super) fn parse_pattern(&mut self) -> Result<ast::Pattern, CompileError> {

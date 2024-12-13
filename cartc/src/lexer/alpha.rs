@@ -20,7 +20,7 @@ macro_rules! basic_token {
     };
 }
 
-impl<R: Reporter + Debug> Lexer<R> {
+impl<'a, R: Reporter + Debug> Lexer<'a, R> {
     /// Return the next token from the input.
     pub(super) fn next_alpha(&mut self) -> Token {
         self.skip_whitespace_and_comments();

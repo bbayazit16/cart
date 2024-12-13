@@ -5,7 +5,7 @@ use crate::reporter::reporter_trait::Reporter;
 use crate::token::Token;
 use std::fmt::Debug;
 
-impl<R: Reporter + Debug> Parser<R> {
+impl<'a, R: Reporter + Debug> Parser<'a, R> {
     // structLiteral  → IDENTIFIER "{" structParamValues? "}" ;
     pub(super) fn parse_struct_literal(
         &mut self,

@@ -4,7 +4,7 @@ use crate::parser::Parser;
 use crate::reporter::reporter_trait::Reporter;
 use std::fmt::Debug;
 
-impl<R: Reporter + Debug> Parser<R> {
+impl<'a, R: Reporter + Debug> Parser<'a, R> {
     // enumTypeList   → type ( "," type )*
     pub(super) fn parse_typelist(&mut self) -> Result<Vec<ast::Type>, CompileError> {
         let mut types = vec![self.parse_type()?];

@@ -6,7 +6,7 @@ use crate::token::{Token, TokenType};
 use crate::{generate_consume_impl, generate_match_impl};
 use std::fmt::Debug;
 
-impl<R: Reporter + Debug> Parser<R> {
+impl<'a, R: Reporter + Debug> Parser<'a, R> {
     /// Shorthand to report errors.
     #[inline]
     #[allow(unused)]
@@ -51,7 +51,7 @@ impl<R: Reporter + Debug> Parser<R> {
 }
 
 // Manually implemented consume_identifier, as generate_consume_impl is restricted to one token
-impl<R: Reporter + Debug> Parser<R> {
+impl<'a, R: Reporter + Debug> Parser<'a, R> {
     pub(super) fn consume_identifier(&mut self) -> Result<Token, CompileError> {
         let token = self.peek()?;
         match token.token_type {

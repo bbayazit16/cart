@@ -6,7 +6,7 @@ use crate::token::{Token, TokenType};
 use std::fmt::Debug;
 use std::io::{Seek, SeekFrom};
 
-impl<R: Reporter + Debug> Lexer<R> {
+impl<'a, R: Reporter + Debug> Lexer<'a, R> {
     /// Reverts the Lexer to the given `Position`.
     /// This function is useful for recovering from errors. Since each token
     /// contains an instance of `Position`, it is also possible to restore

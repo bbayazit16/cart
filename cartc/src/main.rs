@@ -13,7 +13,6 @@ use crate::cli::{Cli, Commands};
 use crate::codegen::compiler::compile;
 use crate::context::FileContext;
 use crate::parser::Parser;
-use crate::reporter::reporter_trait::Reporter;
 use crate::reporter::ConsoleReporter;
 use clap::Parser as ClapParser;
 
@@ -36,7 +35,9 @@ fn main() {
 
     match &cli.command {
         Commands::Run(options) | Commands::Compile(options) => {
-            let context = FileContext::<ConsoleReporter>::try_new(&options.input).unwrap();
+            let reporter = ConsoleReporter::new(&options.input);
+            let context =
+                FileContext::<ConsoleReporter>::try_new(&options.input, &reporter).unwrap();
 
             let start = std::time::Instant::now();
             let program = Parser::new(context).parse();

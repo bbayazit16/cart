@@ -5,7 +5,7 @@ use crate::reporter::reporter_trait::Reporter;
 use crate::token::TokenType;
 use std::fmt::Debug;
 
-impl<R: Reporter + Debug> Parser<R> {
+impl<'a, R: Reporter + Debug> Parser<'a, R> {
     /// Parse and return a declaration.
     pub(super) fn parse_declaration(&mut self) -> ast::Declaration {
         match self.parse_declaration_() {

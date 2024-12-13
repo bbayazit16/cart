@@ -14,20 +14,20 @@ use std::path::{Path, PathBuf};
 /// - `reporter`: The reporter used to report errors in this file.
 /// - `file_path`: The original path to the file.
 #[derive(Debug)]
-pub struct FileContext<R: Reporter + Debug> {
+pub struct FileContext<'a, R: Reporter + Debug> {
     reader: BufReader<File>,
-    reporter: R,
+    reporter: &'a R,
     file_path: PathBuf,
 }
 
-impl<R: Reporter + Debug> FileContext<R> {
+impl<'a, R: Reporter + Debug> FileContext<'a, R> {
     /// Initialize a new `FileContext`.
     /// If the file can't be opened, report via the reporter,
     /// and return None.
-    pub fn try_new<P: AsRef<Path>>(file_path: &P) -> Option<Self> {
+    pub fn try_new<P: AsRef<Path>>(file_path: &P, reporter: &'a R) -> Option<Self> {
         Self::safe_open(&file_path).map(|file| FileContext {
             reader: BufReader::new(file),
-            reporter: Reporter::new(file_path),
+            reporter,
             file_path: file_path.as_ref().to_path_buf(),
         })
     }

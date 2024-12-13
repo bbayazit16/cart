@@ -5,7 +5,7 @@ use crate::reporter::reporter_trait::Reporter;
 use std::fmt::Debug;
 use std::io::Read;
 
-impl<R: Reporter + Debug> Lexer<R> {
+impl<'a, R: Reporter + Debug> Lexer<'a, R> {
     /// Advances the lexer while the current char
     /// is alphanumeric.
     pub(super) fn advance_while_alphanumeric(&mut self) {

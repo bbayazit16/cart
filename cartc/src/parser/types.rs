@@ -4,7 +4,7 @@ use crate::parser::Parser;
 use crate::reporter::reporter_trait::Reporter;
 use std::fmt::Debug;
 
-impl<R: Reporter + Debug> Parser<R> {
+impl<'a, R: Reporter + Debug> Parser<'a, R> {
     // type           → IDENTIFIER genericArgs?
     //                | "(" type? ")"
     pub(super) fn parse_type(&mut self) -> Result<ast::Type, CompileError> {

@@ -5,7 +5,7 @@ use crate::reporter::reporter_trait::Reporter;
 use crate::token::TokenType;
 use std::fmt::Debug;
 
-impl<R: Reporter + Debug> Parser<R> {
+impl<'a, R: Reporter + Debug> Parser<'a, R> {
     // statement      → exprStmt
     //                | letStmt
     //                | useStmt

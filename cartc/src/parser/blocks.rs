@@ -4,7 +4,7 @@ use crate::parser::Parser;
 use crate::reporter::reporter_trait::Reporter;
 use std::fmt::Debug;
 
-impl<R: Reporter + Debug> Parser<R> {
+impl<'a, R: Reporter + Debug> Parser<'a, R> {
     // block          → "{" declaration* expression? "}" ;
     pub(super) fn parse_block(&mut self) -> Result<ast::Block, CompileError> {
         let starting_span = self.consume_lbrace()?.span;

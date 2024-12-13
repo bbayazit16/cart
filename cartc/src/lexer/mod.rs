@@ -44,16 +44,16 @@ const BUFFER_CAPACITY: usize = 2048;
 /// - `buffer_eof`: A flag indicating whether the end of the input file has been
 ///   reached.
 #[derive(Debug)]
-pub(crate) struct Lexer<R: Reporter + Debug> {
+pub(crate) struct Lexer<'a, R: Reporter + Debug> {
     buffer: String,
-    context: FileContext<R>,
+    context: FileContext<'a, R>,
     position: Position,
     buffer_position: usize,
     buffer_start: usize,
     buffer_eof: bool,
 }
 
-impl<R: Reporter + Debug> Lexer<R> {
+impl<'a, R: Reporter + Debug> Lexer<'a, R> {
     /// Given a [`FileContext`], initialize a new Lexer.
     pub(crate) fn new(context: FileContext<R>) -> Lexer<R> {
         Lexer {
