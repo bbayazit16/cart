@@ -3,7 +3,7 @@ mod cli;
 mod codegen;
 pub mod context;
 pub mod errors;
-mod hir;
+pub mod hir;
 mod lexer;
 pub mod parser;
 pub mod reporter;

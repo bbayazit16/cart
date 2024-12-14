@@ -36,8 +36,9 @@ fn main() {
     match &cli.command {
         Commands::Run(options) | Commands::Compile(options) => {
             let reporter = ConsoleReporter::new(&options.input);
-            let context =
-                FileContext::<ConsoleReporter>::try_new(&options.input, &reporter).unwrap();
+            let context = FileContext::<ConsoleReporter>::try_new(
+                &options.input, &reporter
+            ).unwrap();
 
             let start = std::time::Instant::now();
             let program = Parser::new(context).parse();
@@ -49,9 +50,8 @@ fn main() {
                     end.duration_since(start).as_micros()
                 );
             }
-
-            let reporter = ConsoleReporter::new(&options.input);
-            let mut hir = hir::TypeChecker::new(reporter).resolve_types(&program);
+            
+            let mut hir = hir::TypeChecker::new(&reporter).resolve_types(&program);
 
             let start = std::time::Instant::now();
             compile(&mut hir, matches!(cli.command, Commands::Run(_)), options);
