@@ -3,7 +3,7 @@ use crate::errors::{SyntaxError, TypeError};
 
 impl SyntaxError {
     /// Return the span of the error.
-    pub(crate) fn span(&self) -> Span {
+    pub fn span(&self) -> Span {
         match self {
             SyntaxError::UnterminatedStringLiteral { span }
             | SyntaxError::UnterminatedComment { span }
@@ -16,7 +16,7 @@ impl SyntaxError {
 
 impl TypeError {
     /// Return the span of the error.
-    pub(crate) fn span(&self) -> Span {
+    pub fn span(&self) -> Span {
         match self {
             TypeError::IncorrectType { span, .. }
             | TypeError::UndefinedVariable { span, .. }

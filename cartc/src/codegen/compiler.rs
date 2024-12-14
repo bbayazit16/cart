@@ -89,10 +89,11 @@ fn print_ir_to_stderr(module: &Module) {
 /// Links an object file into an executable.
 fn link_object_file(object_file: &PathBuf, output_executable: &PathBuf) {
     let lib_path = env::var("CARTLIB_PATH").unwrap_or_else(|_| {
-        println!("CARTLIB_PATH environment variablenot set. If you are running from the source code, \
+        println!("CARTLIB_PATH environment variable not set. If you are running from the source code, \
           set the environment variable to the path of the target/debug or target/release directory.");
         std::process::exit(1);
     });
+    
     let status = std::process::Command::new("cc")
         .arg(object_file)
         .arg("-o")
@@ -116,11 +117,11 @@ fn run_executable(executable: &PathBuf) {
     let executable_path = if executable.is_absolute() {
         executable.clone()
     } else {
-        std::env::current_dir().unwrap().join(executable)
+        env::current_dir().unwrap().join(executable)
     };
 
     std::process::Command::new(&executable_path)
-        .current_dir(std::env::current_dir().unwrap())
+        .current_dir(env::current_dir().unwrap())
         .status()
         .expect("Failed to execute program");
 }

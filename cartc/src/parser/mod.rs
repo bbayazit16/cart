@@ -75,7 +75,7 @@ impl<'a, R: Reporter + Debug> Parser<'a, R> {
 
     /// Parses the entire program, returning CompileError or
     /// the output Program, a vector of declaration ASTs.
-    pub(crate) fn parse(&mut self) -> ast::Program {
+    pub fn parse(&mut self) -> ast::Program {
         let mut declarations = Vec::new();
         while !self.at_end() {
             declarations.push(self.parse_declaration());
