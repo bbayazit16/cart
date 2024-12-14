@@ -25,8 +25,8 @@ pub(crate) use hir_type::*;
 /// reports to the reporter.
 ///
 /// The generic parameter R is the reporter's type.
-pub(crate) struct TypeChecker<R: Reporter + Debug> {
-    reporter: R,
+pub struct TypeChecker<'a, R: Reporter + Debug> {
+    reporter: &'a R,
     errors: Vec<CompileError>,
     types: SymbolTable<(Type, bool)>,
     generics_table: SymbolSet<String>,
@@ -36,9 +36,9 @@ pub(crate) struct TypeChecker<R: Reporter + Debug> {
     struct_generics: SymbolTable<Vec<String>>,
 }
 
-impl<R: Reporter + Debug> TypeChecker<R> {
+impl<'a, R: Reporter + Debug> TypeChecker<'a, R> {
     /// Create a new TypeChecker struct with the given reporter.
-    pub(crate) fn new(reporter: R) -> Self {
+    pub fn new(reporter: &'a R) -> Self {
         let mut functions = SymbolTable::default();
         functions.add(
             "print_number".to_string(),
@@ -75,7 +75,7 @@ impl<R: Reporter + Debug> TypeChecker<R> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Program {
+pub struct Program {
     pub(crate) declarations: Vec<Declaration>,
 }
 

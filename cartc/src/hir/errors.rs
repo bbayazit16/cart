@@ -4,7 +4,7 @@ use crate::hir::{BinaryOp, Type, TypeChecker};
 use crate::reporter::reporter_trait::Reporter;
 use std::fmt::Debug;
 
-impl<R: Reporter + Debug> TypeChecker<R> {
+impl<'a, R: Reporter + Debug> TypeChecker<'a, R> {
     /// Report a type error, where the expected type does not match the found type.
     pub(super) fn report_type_error(&mut self, expected: &Type, found: &Type, span: Span) {
         self.errors.push(

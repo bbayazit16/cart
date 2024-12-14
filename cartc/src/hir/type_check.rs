@@ -17,9 +17,9 @@ fn determine_bit_size(_number_str: &str) -> Type {
     Type::Int
 }
 
-impl<'a, R: Reporter + Debug> TypeChecker<R> {
+impl<'a, 'b, R: Reporter + Debug> TypeChecker<'b, R> {
     /// Resolve the types of the AST nodes.
-    pub(crate) fn resolve_types(&mut self, ast: &'a ast::Program) -> hir::Program {
+    pub fn resolve_types(&mut self, ast: &'a ast::Program) -> hir::Program {
         for declaration in &ast.declarations {
             if let ast::Declaration::StructDecl(ref struct_decl) = declaration {
                 let name = token_value!(&struct_decl.name, Identifier);
@@ -27,7 +27,7 @@ impl<'a, R: Reporter + Debug> TypeChecker<R> {
                     .add(name.clone(), (Type::Struct(name.clone()), false));
             }
         }
-
+        
         for declaration in &ast.declarations {
             if let ast::Declaration::FunctionDecl(ref function_decl) = declaration {
                 let function_signature = self.resolve_function_signature(function_decl);
@@ -38,19 +38,14 @@ impl<'a, R: Reporter + Debug> TypeChecker<R> {
                     .add(function_signature.name.to_string(), function_signature);
             }
         }
-
+        
         let mut declarations = Vec::new();
         for declaration in ast.declarations.iter() {
             declarations.push(self.resolve_declaration(declaration));
         }
-
-        let should_exit = !self.errors.is_empty();
+        
         for error in self.errors.iter() {
             self.reporter.report(error);
-        }
-
-        if should_exit {
-            std::process::exit(1);
         }
 
         hir::Program { declarations }

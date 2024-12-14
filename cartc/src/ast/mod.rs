@@ -328,6 +328,6 @@ pub(crate) struct ExtensionDecl {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Program {
+pub struct Program {
     pub declarations: Vec<Declaration>,
 }
