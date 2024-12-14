@@ -6,25 +6,27 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{stdin, stdout};
 use tokio::sync::RwLock;
+use std::sync::{RwLock as StdRwLock};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
+use cart::hir::TypeChecker;
 
 #[derive(Debug)]
 struct ErrorCollector {
-    errors: Arc<RwLock<Vec<Diagnostic>>>,
+    errors: Arc<StdRwLock<Vec<Diagnostic>>>,
 }
 
 impl Reporter for ErrorCollector {
     fn report(&self, error: &CompileError) {
         match error {
             CompileError::Syntax(e) => {
-                self.errors.write().await.push(
+                self.errors.write().unwrap().push(
                     Backend::create_diagnostic(&e.to_string(), e.span())
                 );
             },
             CompileError::TypeError(e) => {
-                self.errors.write().await.push(
+                self.errors.write().unwrap().push(
                     Backend::create_diagnostic(&e.to_string(), e.span())
                 );
             },
@@ -44,15 +46,19 @@ struct Backend {
 impl Backend {
     async fn parse(&self, uri: &Url) {
         let reporter = ErrorCollector {
-            errors: Arc::new(RwLock::new(Vec::new())),
+            errors: Arc::new(StdRwLock::new(Vec::new())),
         };
 
         let context = FileContext::try_new(&uri.to_file_path().unwrap(), &reporter).unwrap();
 
         let mut parser = Parser::new(context);
-        let tree=  parser.parse();
-        let errors = reporter.errors.read().await;
-        self.report_diagnostics(uri.clone(), errors.clone()).await;
+        let program= parser.parse();
+        let hir = TypeChecker::new(&reporter).resolve_types(&program);
+
+        let errors = reporter.errors.read().unwrap().clone();
+
+        dbg!("Errors: {:?}", &errors);
+        self.report_diagnostics(uri.clone(), errors).await;
     }
 
     async fn report_diagnostics(&self, uri: Url, diagnostics: Vec<Diagnostic>) {
@@ -85,6 +91,11 @@ impl LanguageServer for Backend {
                 resolve_provider: Some(false),
                 ..Default::default()
             }),
+            text_document_sync: Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
+                open_close: Some(true),
+                change: Some(TextDocumentSyncKind::FULL),
+                ..Default::default()
+            })),
             ..Default::default()
         };
 
@@ -114,8 +125,48 @@ impl LanguageServer for Backend {
         // self.documents.write().await.insert(uri, text);
     }
 
+    async fn did_change(&self, params: DidChangeTextDocumentParams) {
+        let uri = params.text_document.uri;
+        // let text = params.text_document.text;
+        self.parse(&uri).await;
+        // self.documents.write().await.insert(uri, text);
+    }
+
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        dbg!(&params);
+        // [cart-lsp/src/main.rs:122:9] &params = CompletionParams {
+        //     text_document_position: TextDocumentPositionParams {
+        //         text_document: TextDocumentIdentifier {
+        //             uri: Url {
+        //
+        //         scheme: "file",
+        //                 cannot_be_a_base: false,
+        //                 username: "",
+        //                 password: None,
+        //                 host: None,
+        //                 port: None,
+        //                 path: "/Users/baris/dev/Languages/Rust/cart/program.cart",
+        //                 query: None,
+        //                 fragment: None,
+        //             },
+        //         },
+        //         position: Position {
+        //             line: 28,
+        //             character: 47,
+        //         },
+        //     },
+        //     work_done_progress_params: WorkDoneProgressParams {
+        //         work_done_token: None,
+        //     },
+        //     partial_result_params: PartialResultParams {
+        //         partial_result_token: None,
+        //     },
+        //     context: Some(
+        //         CompletionContext {
+        //             trigger_kind: Invoked,
+        //             trigger_character: None,
+        //         },
+        //     ),
+        // }
         let completion_list = CompletionList {
             is_incomplete: false,
             items: vec![
