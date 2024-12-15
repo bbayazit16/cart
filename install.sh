@@ -11,8 +11,9 @@ echo -e "\033[38;5;${colors[3]}m | |__| (_| | |  | |_  \033[0m"
 echo -e "\033[38;5;${colors[4]}m  \\____\\__,_|_|   \\__| \033[0m"
 echo -e "\033[38;5;${colors[5]}m                      \033[0m"
 
-BIN_DIR="/usr/local/bin"
-LIB_DIR="/usr/local/lib/cartlang"
+INSTALL_DIR="$HOME/.cart"
+BIN_DIR="$INSTALL_DIR/bin"
+LIB_DIR="$INSTALL_DIR/lib"
 
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
@@ -104,7 +105,7 @@ cp lib/libcartstd.a "$LIB_DIR/"
 echo "Cleaning up..."
 rm -rf "$RELEASE_FILE" bin lib
 
-EXPORT_CMD="export CARTLIB_PATH=\"$LIB_DIR\""
+EXPORT_CMD="export PATH=\"$BIN_DIR:\$PATH\""
 USER_SHELL=$(basename "$SHELL")
 
 update_shell_config() {
@@ -112,10 +113,10 @@ update_shell_config() {
 
     if [[ -f "$shell_config" ]]; then
         if grep -q "$EXPORT_CMD" "$shell_config"; then
-            echo "CARTLIB_PATH is already set in $shell_config. Skipping."
+            echo "PATH is already set in $shell_config. Skipping."
         else
             echo "$EXPORT_CMD" >> "$shell_config"
-            echo "Added CARTLIB_PATH to $shell_config."
+            echo "Added PATH to $shell_config."
         fi
     fi
 }
@@ -133,15 +134,15 @@ case "$USER_SHELL" in
         ;;
     fish)
         echo "Fish shell detected. Please add the following to your Fish configuration manually:"
-        echo "set -x CARTLIB_PATH $LIB_DIR"
+        echo "set -x PATH $BIN_DIR \$PATH"
         ;;
     *)
-        echo "Unsupported shell: $USER_SHELL. Please set CARTLIB_PATH manually in your shell configuration:"
+        echo "Unsupported shell: $USER_SHELL. Please set PATH manually in your shell configuration:"
         echo "$EXPORT_CMD"
         ;;
 esac
 
-export CARTLIB_PATH="$LIB_DIR"
+export PATH="$BIN_DIR:$PATH"
 
 echo ""
 
