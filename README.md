@@ -50,7 +50,7 @@ sudo apt install -y libpolly-18-dev libz-dev`
 
 Then, run the following command to install Cart:
 ```shell
-curl -fsSL https://raw.githubusercontent.com/bbayazit16/cart/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/bbayazit16/cart/main/install.sh | bash
 ```
 
 Or, you may choose to directly install the binary from the releases page.
