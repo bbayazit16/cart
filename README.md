@@ -45,7 +45,7 @@ On Linux, run:
 wget https://apt.llvm.org/llvm.sh && \
 chmod u+x llvm.sh && \
 sudo ./llvm.sh 18 && \
-sudo apt install -y libpolly-18-dev libz-dev`.
+sudo apt install -y libpolly-18-dev libz-dev`
 ```
 
 Then, run the following command to install Cart:
