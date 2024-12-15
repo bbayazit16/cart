@@ -111,13 +111,16 @@ USER_SHELL=$(basename "$SHELL")
 update_shell_config() {
     local shell_config="$1"
 
-    if [[ -f "$shell_config" ]]; then
-        if grep -q "$EXPORT_CMD" "$shell_config"; then
-            echo "PATH is already set in $shell_config. Skipping."
-        else
-            echo "$EXPORT_CMD" >> "$shell_config"
-            echo "Added PATH to $shell_config."
-        fi
+    if [[ ! -f "$shell_config" ]]; then
+        touch "$shell_config"
+        echo "Created $shell_config."
+    fi
+
+    if grep -q "$EXPORT_CMD" "$shell_config"; then
+        echo "PATH is already set in $shell_config. Skipping."
+    else
+        echo "$EXPORT_CMD" >> "$shell_config"
+        echo "Added PATH to $shell_config."
     fi
 }
 
