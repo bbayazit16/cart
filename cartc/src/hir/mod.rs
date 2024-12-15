@@ -17,6 +17,7 @@ mod errors;
 pub(crate) mod hir_type;
 mod type_check;
 mod search;
+mod defaults;
 
 use crate::reporter::reporter_trait::Reporter;
 pub(crate) use hir_type::*;
@@ -40,34 +41,12 @@ pub struct TypeChecker<'a, R: Reporter + Debug> {
 impl<'a, R: Reporter + Debug> TypeChecker<'a, R> {
     /// Create a new TypeChecker struct with the given reporter.
     pub fn new(reporter: &'a R) -> Self {
-        let mut functions = SymbolTable::default();
-        functions.add(
-            "print_number".to_string(),
-            FunctionSignature {
-                name: "print_number".to_string(),
-                params: vec![("number".into(), Type::Int)],
-                return_type: Type::Unit,
-                generic_declarations: Vec::new(),
-                is_self: false,
-            },
-        );
-        functions.add(
-            "print_string".to_string(),
-            FunctionSignature {
-                name: "print_string".to_string(),
-                params: vec![("string".into(), Type::String)],
-                return_type: Type::Unit,
-                generic_declarations: Vec::new(),
-                is_self: false,
-            },
-        );
-
         Self {
             reporter,
             errors: Vec::new(),
             types: SymbolTable::default(),
             generics_table: SymbolSet::default(),
-            functions,
+            functions: defaults::default_functions(),
             struct_fields: SymbolTable::default(),
             struct_methods: SymbolTable::default(),
             struct_generics: SymbolTable::default(),
