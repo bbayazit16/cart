@@ -106,6 +106,7 @@ echo "Cleaning up..."
 rm -rf "$RELEASE_FILE" bin lib
 
 EXPORT_CMD="export PATH=\"$BIN_DIR:\$PATH\""
+CART_HOME_CMD="export CART_HOME=\"$INSTALL_DIR\""
 USER_SHELL=$(basename "$SHELL")
 
 update_shell_config() {
@@ -121,6 +122,13 @@ update_shell_config() {
     else
         echo "$EXPORT_CMD" >> "$shell_config"
         echo "Added PATH to $shell_config."
+    fi
+
+    if grep -q "$CART_HOME_CMD" "$shell_config"; then
+        echo "CART_HOME is already set in $shell_config. Skipping."
+    else
+        echo "$CART_HOME_CMD" >> "$shell_config"
+        echo "Added CART_HOME to $shell_config."
     fi
 }
 
@@ -142,6 +150,7 @@ case "$USER_SHELL" in
     *)
         echo "Unsupported shell: $USER_SHELL. Please set PATH manually in your shell configuration:"
         echo "$EXPORT_CMD"
+        echo "$CART_HOME_CMD"
         ;;
 esac
 
