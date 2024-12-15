@@ -16,6 +16,7 @@ mod display;
 mod errors;
 pub(crate) mod hir_type;
 mod type_check;
+mod search;
 
 use crate::reporter::reporter_trait::Reporter;
 pub(crate) use hir_type::*;
@@ -96,18 +97,18 @@ pub(crate) enum Declaration {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Function {
-    pub(crate) signature: FunctionSignature,
-    pub(crate) body: Block,
+pub struct Function {
+    pub signature: FunctionSignature,
+    pub body: Block,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct FunctionSignature {
-    pub(crate) name: String,
-    pub(crate) params: Vec<(String, Type)>,
-    pub(crate) return_type: Type,
-    pub(crate) generic_declarations: Vec<Type>,
-    pub(crate) is_self: bool,
+pub struct FunctionSignature {
+    pub name: String,
+    pub params: Vec<(String, Type)>,
+    pub return_type: Type,
+    pub generic_declarations: Vec<Type>,
+    pub is_self: bool,
 }
 
 #[derive(Debug, Clone)]

@@ -1,16 +1,16 @@
 use cart::context::{FileContext, Span};
 use cart::errors::CompileError;
+use cart::hir::{Program, TypeChecker};
 use cart::parser::Parser;
 use cart::reporter::Reporter;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::RwLock as StdRwLock;
 use tokio::io::{stdin, stdout};
 use tokio::sync::RwLock;
-use std::sync::{RwLock as StdRwLock};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
-use cart::hir::TypeChecker;
 
 #[derive(Debug)]
 struct ErrorCollector {
@@ -40,7 +40,7 @@ impl Reporter for ErrorCollector {
 #[derive(Debug)]
 struct Backend {
     client: Client,
-    documents: Arc<RwLock<HashMap<Url, String>>>,
+    documents: Arc<RwLock<HashMap<String, Program>>>,
 }
 
 impl Backend {
@@ -54,10 +54,10 @@ impl Backend {
         let mut parser = Parser::new(context);
         let program= parser.parse();
         let hir = TypeChecker::new(&reporter).resolve_types(&program);
+        self.documents.write().await.insert(uri.to_string(), hir);
 
         let errors = reporter.errors.read().unwrap().clone();
 
-        dbg!("Errors: {:?}", &errors);
         self.report_diagnostics(uri.clone(), errors).await;
     }
 
@@ -120,63 +120,28 @@ impl LanguageServer for Backend {
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
-        // let text = params.text_document.text;
         self.parse(&uri).await;
-        // self.documents.write().await.insert(uri, text);
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
-        // let text = params.text_document.text;
         self.parse(&uri).await;
-        // self.documents.write().await.insert(uri, text);
     }
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        // [cart-lsp/src/main.rs:122:9] &params = CompletionParams {
-        //     text_document_position: TextDocumentPositionParams {
-        //         text_document: TextDocumentIdentifier {
-        //             uri: Url {
-        //
-        //         scheme: "file",
-        //                 cannot_be_a_base: false,
-        //                 username: "",
-        //                 password: None,
-        //                 host: None,
-        //                 port: None,
-        //                 path: "/Users/baris/dev/Languages/Rust/cart/program.cart",
-        //                 query: None,
-        //                 fragment: None,
-        //             },
-        //         },
-        //         position: Position {
-        //             line: 28,
-        //             character: 47,
-        //         },
-        //     },
-        //     work_done_progress_params: WorkDoneProgressParams {
-        //         work_done_token: None,
-        //     },
-        //     partial_result_params: PartialResultParams {
-        //         partial_result_token: None,
-        //     },
-        //     context: Some(
-        //         CompletionContext {
-        //             trigger_kind: Invoked,
-        //             trigger_character: None,
-        //         },
-        //     ),
-        // }
+        let docs = self.documents.read().await;
+        let all_functions = docs.get(&params.text_document_position.text_document.uri.to_string()).unwrap().get_all_high_level_functions();
+
         let completion_list = CompletionList {
             is_incomplete: false,
-            items: vec![
+            items: all_functions.into_iter().map(|f| {
                 CompletionItem {
-                    label: "Hello".to_string(),
+                    label: f.signature.name.clone(),
                     kind: Some(CompletionItemKind::FUNCTION),
-                    detail: Some("Hello, World!".to_string()),
+                    detail: Some(f.signature.name.clone()),
                     ..Default::default()
-                },
-            ],
+                }
+            }).collect()
         };
 
         Ok(Some(CompletionResponse::List(completion_list)))
