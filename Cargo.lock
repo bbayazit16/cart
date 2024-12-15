@@ -59,7 +59,7 @@ checksum = "c1fd03a028ef38ba2276dce7e33fcd6369c158a1bca17946c4b1b701891c1ff7"
 
 [[package]]
 name = "cart"
-version = "0.1.0-alpha"
+version = "0.1.1-alpha"
 dependencies = [
  "clap",
  "inkwell",
@@ -68,7 +68,7 @@ dependencies = [
 
 [[package]]
 name = "cart-lsp"
-version = "0.1.0"
+version = "0.1.0-alpha"
 dependencies = [
  "cart",
 ]
