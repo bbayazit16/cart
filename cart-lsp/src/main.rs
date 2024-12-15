@@ -136,9 +136,9 @@ impl LanguageServer for Backend {
             is_incomplete: false,
             items: all_functions.into_iter().map(|f| {
                 CompletionItem {
-                    label: f.signature.name.clone(),
+                    label: f.signature.original_name.clone(),
                     kind: Some(CompletionItemKind::FUNCTION),
-                    detail: Some(f.signature.name.clone()),
+                    detail: Some(f.signature.original_name.clone()),
                     ..Default::default()
                 }
             }).collect()

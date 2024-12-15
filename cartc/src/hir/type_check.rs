@@ -1,6 +1,6 @@
 use crate::context::Span;
 use crate::errors::TypeError;
-use crate::hir::{Type, TypeChecker};
+use crate::hir::{mangle_function_name, Type, TypeChecker};
 use crate::reporter::reporter_trait::Reporter;
 use crate::token::Token;
 use crate::{ast, hir, token_value};
@@ -17,7 +17,7 @@ fn determine_bit_size(_number_str: &str) -> Type {
     Type::Int
 }
 
-impl<'a, 'b, R: Reporter + Debug> TypeChecker<'b, R> {
+impl<'a, R: Reporter + Debug> TypeChecker<'_, R> {
     /// Resolve the types of the AST nodes.
     pub fn resolve_types(&mut self, ast: &'a ast::Program) -> hir::Program {
         for declaration in &ast.declarations {
@@ -27,23 +27,25 @@ impl<'a, 'b, R: Reporter + Debug> TypeChecker<'b, R> {
                     .add(name.clone(), (Type::Struct(name.clone()), false));
             }
         }
-        
+
         for declaration in &ast.declarations {
             if let ast::Declaration::FunctionDecl(ref function_decl) = declaration {
-                let function_signature = self.resolve_function_signature(function_decl);
+                let function_signature = self.resolve_function_signature(function_decl, None);
                 // Register function signatures. This allows functions defined later in the source
                 // code to be called by the functions defined earlier.
                 // TODO: Do this for extensions as well.
-                self.functions
-                    .add(function_signature.name.to_string(), function_signature);
+                self.functions.add(
+                    function_signature.original_name.to_string(),
+                    function_signature,
+                );
             }
         }
-        
+
         let mut declarations = Vec::new();
         for declaration in ast.declarations.iter() {
             declarations.push(self.resolve_declaration(declaration));
         }
-        
+
         for error in self.errors.iter() {
             self.reporter.report(error);
         }
@@ -72,6 +74,7 @@ impl<'a, 'b, R: Reporter + Debug> TypeChecker<'b, R> {
     fn resolve_function_signature(
         &mut self,
         function_decl: &'a ast::FunctionDecl,
+        in_struct: Option<&str>,
     ) -> hir::FunctionSignature {
         let name = token_value!(&function_decl.name, Identifier);
 
@@ -79,16 +82,37 @@ impl<'a, 'b, R: Reporter + Debug> TypeChecker<'b, R> {
             self.add_ident_to_generics_table(generic);
         }
 
-        let params = function_decl
-            .params
-            .iter()
-            .map(|p| {
-                (
-                    token_value!(p.name, Identifier),
-                    self.resolve_type(&p.param_type),
-                )
-            })
-            .collect();
+        let params: Vec<(String, Type)> = if function_decl.is_self {
+            std::iter::once((
+                "self".to_string(),
+                Type::Struct(in_struct.unwrap().to_string()),
+            ))
+            .chain(
+                function_decl
+                    .params
+                    .iter()
+                    .map(|p| {
+                        (
+                            token_value!(p.name, Identifier),
+                            self.resolve_type(&p.param_type),
+                        )
+                    })
+                    .collect::<Vec<(String, Type)>>(),
+            )
+            .collect()
+        } else {
+            function_decl
+                .params
+                .iter()
+                .map(|p| {
+                    (
+                        token_value!(p.name, Identifier),
+                        self.resolve_type(&p.param_type),
+                    )
+                })
+                .collect()
+        };
+
         let return_type = self.resolve_type(&function_decl.return_type);
 
         let generic_declarations = function_decl
@@ -96,14 +120,15 @@ impl<'a, 'b, R: Reporter + Debug> TypeChecker<'b, R> {
             .iter()
             .map(|p| self.resolve_type(p))
             .collect();
-        let is_self = function_decl.is_self;
 
+        let param_types = params.iter().map(|(_, t)| t.clone()).collect::<Vec<Type>>();
         hir::FunctionSignature {
-            name,
+            mangled_name: mangle_function_name(&name, &param_types),
+            original_name: name,
             params,
             return_type,
             generic_declarations,
-            is_self,
+            is_self: function_decl.is_self,
         }
     }
 
@@ -116,7 +141,7 @@ impl<'a, 'b, R: Reporter + Debug> TypeChecker<'b, R> {
         // Here, a scope is started because of function generics. If a generic is defined for the
         // function, it shouldn't be used for other functions.
         self.types.begin_scope();
-        let signature = self.resolve_function_signature(function_decl);
+        let signature = self.resolve_function_signature(function_decl, in_struct);
         if let Some(struct_name) = in_struct {
             if signature.is_self {
                 let self_type = Type::Struct(struct_name.to_string());
@@ -126,18 +151,38 @@ impl<'a, 'b, R: Reporter + Debug> TypeChecker<'b, R> {
 
             match self.struct_methods.get_mut(struct_name) {
                 Some(existing_methods) => {
-                    if existing_methods.contains_key(&signature.name) {
-                        panic!("Already implemented {} for {}", signature.name, struct_name);
+                    if existing_methods.contains_key(&signature.original_name) {
+                        // TODO: Report this error
+                        panic!(
+                            "Already implemented {} for {}",
+                            signature.original_name, struct_name
+                        );
                     }
-                    existing_methods.insert(signature.name.clone(), signature.clone());
+                    existing_methods.insert(signature.original_name.clone(), signature.clone());
                 }
                 None => {
-                    let methods = HashMap::from([(signature.name.clone(), signature.clone())]);
+                    let methods =
+                        HashMap::from([(signature.original_name.clone(), signature.clone())]);
                     self.struct_methods.add(struct_name.to_string(), methods);
                 }
             }
         }
-        let body = self.resolve_block(&function_decl.body, Some(signature.params.clone()));
+
+        // Vec<((String, bool), Type)> where bool is mutable.
+        // The is_mutable flag is always true for function parameters, except for `self`.
+        // Below, we check if the function is a method, and if so, we set the `self` parameter to
+        // be immutable.
+        let mut mutable_or_not: Vec<((String, bool), Type)> = signature
+            .params
+            .iter()
+            .map(|(n, t)| ((n.clone(), true), t.clone()))
+            .collect::<Vec<((String, bool), Type)>>();
+        // If self, set the first parameter to be immutable.
+        if signature.is_self {
+            mutable_or_not[0].0.1 = false;
+        }
+
+        let body = self.resolve_block(&function_decl.body, Some(mutable_or_not));
         self.types.end_scope();
 
         if body.return_type != signature.return_type {
@@ -278,19 +323,17 @@ impl<'a, 'b, R: Reporter + Debug> TypeChecker<'b, R> {
     fn resolve_block(
         &mut self,
         block: &'a ast::Block,
-        params: Option<Vec<(String, Type)>>,
+        params: Option<Vec<((String, bool), Type)>>,
     ) -> hir::Block {
         self.types.begin_scope();
         self.functions.begin_scope();
-        self.struct_fields.begin_scope();
         self.struct_methods.begin_scope();
+        self.struct_fields.begin_scope();
         self.struct_generics.begin_scope();
 
         if let Some(params) = params {
-            for (name, ty) in params {
-                // The is_mutable flag is always true for function parameters,
-                // and params are only passed when a function is being resolved.
-                self.types.add(name, (ty, true));
+            for ((name, is_mutable), ty) in params {
+                self.types.add(name, (ty, is_mutable));
             }
         }
 
@@ -567,7 +610,8 @@ impl<'a, 'b, R: Reporter + Debug> TypeChecker<'b, R> {
                 self.report_undefined_function(callee.to_string(), call_expr.callee.span);
                 // TODO: check
                 hir::FunctionSignature {
-                    name: callee.to_string(),
+                    mangled_name: callee.to_string(),
+                    original_name: callee.to_string(),
                     params: vec![],
                     return_type: Type::Unit,
                     generic_declarations: vec![],
@@ -577,7 +621,9 @@ impl<'a, 'b, R: Reporter + Debug> TypeChecker<'b, R> {
         };
 
         hir::Expression::Call {
-            callee,
+            original_callee: callee,
+            mangled_callee: function_signature.mangled_name,
+            associated_struct: None,
             arguments,
             return_type: function_signature.return_type,
         }
@@ -587,18 +633,7 @@ impl<'a, 'b, R: Reporter + Debug> TypeChecker<'b, R> {
     fn resolve_method_call(&mut self, method_call: &'a ast::MethodCallExpr) -> hir::Expression {
         let object = self.resolve_expr(&method_call.object);
         let object_ty = object.resulting_type();
-        let method = token_value!(&method_call.method_name);
-
-        let arguments = method_call
-            .arguments
-            .iter()
-            .map(|arg| self.resolve_expr(arg))
-            .collect::<Vec<hir::Expression>>();
-
-        let arg_types = arguments
-            .iter()
-            .map(|arg| arg.resulting_type())
-            .collect::<Vec<Type>>();
+        let method_name = token_value!(&method_call.method_name);
 
         let object_name = Self::get_object_name(&object_ty);
 
@@ -611,13 +646,32 @@ impl<'a, 'b, R: Reporter + Debug> TypeChecker<'b, R> {
         let method_signature = self
             .struct_methods
             .get(&object_name)
-            .and_then(|methods| methods.get(&method).cloned())
-            .or_else(|| {
-                self.report_undefined_function(method.to_string(), method_call.span);
-                None
-            });
+            .and_then(|methods| methods.get(&method_name).cloned());
+        if method_signature.is_none() {
+            self.report_undefined_function(method_name.clone(), method_call.span);
+        }
+        
+        let is_self = method_signature.as_ref().map(|s| s.is_self).unwrap_or(false);
+        let arguments = if is_self {
+            std::iter::once(object)
+                .chain(
+                    method_call
+                        .arguments
+                        .iter()
+                        .map(|arg| self.resolve_expr(arg)),
+                )
+                .collect::<Vec<hir::Expression>>()
+        } else {
+            method_call
+                .arguments
+                .iter()
+                .map(|arg| self.resolve_expr(arg))
+                .collect::<Vec<hir::Expression>>()
+        };
+        
+        let arg_types = arguments.iter().map(|arg| arg.resulting_type()).collect::<Vec<Type>>();
 
-        let method_return_type = if let Some(signature) = &method_signature {
+        let return_type = if let Some(signature) = &method_signature {
             let signature_types = signature
                 .params
                 .iter()
@@ -632,13 +686,16 @@ impl<'a, 'b, R: Reporter + Debug> TypeChecker<'b, R> {
             Type::Unit
         };
 
-        hir::Expression::MethodCall {
-            object: Box::new(object),
-            object_ty,
-            object_name,
-            method,
+        let mangled_name = method_signature
+            .map(|signature| mangle_function_name(&signature.original_name, &arg_types))
+            .unwrap_or_else(|| method_name.clone());
+
+        hir::Expression::Call {
+            mangled_callee: mangled_name,
+            original_callee: method_name,
+            associated_struct: Some(object_name),
             arguments,
-            method_return_type,
+            return_type,
         }
     }
 

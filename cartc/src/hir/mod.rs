@@ -47,11 +47,22 @@ impl<'a, R: Reporter + Debug> TypeChecker<'a, R> {
             types: SymbolTable::default(),
             generics_table: SymbolSet::default(),
             functions: defaults::default_functions(),
-            struct_fields: SymbolTable::default(),
             struct_methods: SymbolTable::default(),
+            struct_fields: SymbolTable::default(),
             struct_generics: SymbolTable::default(),
         }
     }
+}
+
+/// Mangle a function name.
+/// By convention, if inside a struct, the function's first parameter should be `self`, of
+/// the struct type.
+pub(crate) fn mangle_function_name(name: &str, params: &[Type]) -> String {
+    let mut mangled_name = name.to_string();
+    for ty in params {
+        mangled_name.push_str(&format!("_{}", ty.mangle_value()));
+    }
+    mangled_name
 }
 
 #[derive(Debug, Clone)]
@@ -83,7 +94,8 @@ pub struct Function {
 
 #[derive(Debug, Clone)]
 pub struct FunctionSignature {
-    pub name: String,
+    pub mangled_name: String,
+    pub original_name: String,
     pub params: Vec<(String, Type)>,
     pub return_type: Type,
     pub generic_declarations: Vec<Type>,
@@ -146,17 +158,11 @@ pub(crate) enum Expression {
     },
     Call {
         // TODO: Box<Expression> to account for more complex calls.
-        callee: String,
+        original_callee: String,
+        mangled_callee: String,
+        associated_struct: Option<String>,
         arguments: Vec<Expression>,
         return_type: Type,
-    },
-    MethodCall {
-        object: Box<Expression>,
-        object_ty: Type,
-        object_name: String,
-        method: String,
-        arguments: Vec<Expression>,
-        method_return_type: Type,
     },
     StructLiteral {
         struct_name: String,
@@ -204,9 +210,6 @@ impl Expression {
             Expression::Unary { ty, .. } => ty,
             Expression::Variable { ty, .. } => ty,
             Expression::Call { return_type, .. } => return_type,
-            Expression::MethodCall {
-                method_return_type, ..
-            } => method_return_type,
             Expression::StructLiteral { struct_type, .. } => struct_type,
             Expression::StructAccess {
                 returned_field_type,

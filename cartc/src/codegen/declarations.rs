@@ -16,10 +16,11 @@ impl<'ctx> CodeGen<'ctx> {
                 ref fields,
                 ref generic_declarations,
             } => self.generate_struct(name, fields, generic_declarations),
-            // Declaration::StructDecl(ref struct_decl) => self.generate_struct(struct_decl),
-            // Declaration::ExtensionDecl(ref extension_decl) => {
-            //     self.generate_extension(extension_decl)
-            // }
+            Declaration::Extension { functions, .. } => {
+                for function in functions {
+                    self.generate_function(function);
+                }
+            }
             e => {
                 dbg!(&e);
                 todo!()
@@ -40,7 +41,7 @@ impl<'ctx> CodeGen<'ctx> {
         );
 
         let function = self.module.add_function(
-            &function_hir.signature.name,
+            &function_hir.signature.mangled_name,
             function_type,
             None, // Linkage::External
         );
@@ -56,7 +57,7 @@ impl<'ctx> CodeGen<'ctx> {
             ));
         }
 
-        let bb_name = format!("{}-entry", &function_hir.signature.name);
+        let bb_name = format!("{}-entry", &function_hir.signature.mangled_name);
         let basic_block = self.context.append_basic_block(function, &bb_name);
         self.builder.position_at_end(basic_block);
 

@@ -26,10 +26,11 @@ impl<'ctx> CodeGen<'ctx> {
             } => Some(self.generate_binary(left, left_type, op, right, right_type, resulting_type)),
             Expression::Variable { ref name, ref ty } => Some(self.generate_variable(name, ty)),
             Expression::Call {
-                ref callee,
+                ref mangled_callee,
                 ref arguments,
                 ref return_type,
-            } => self.generate_call_expr(callee, arguments, return_type),
+                .. // original_callee, associated_struct are unused
+            } => self.generate_call_expr(mangled_callee, arguments, return_type),
             Expression::If {
                 ref condition,
                 ref then_branch,

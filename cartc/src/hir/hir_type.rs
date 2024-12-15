@@ -45,6 +45,33 @@ impl Type {
             _ => self == other,
         }
     }
+    
+    /// Return the mangle value of the type.
+    pub(crate) fn mangle_value(&self) -> String {
+        match self {
+            Type::Int => "i".to_string(),
+            Type::Int64 => "i64".to_string(),
+            Type::Int128 => "i128".to_string(),
+            Type::Int256 => "i256".to_string(),
+            Type::Float => "f".to_string(),
+            Type::Float64 => "f64".to_string(),
+            Type::Bool => "b".to_string(),
+            Type::String => "s".to_string(),
+            Type::Unit => "u".to_string(),
+            Type::Array(ty) => format!("a{}", ty.mangle_value()),
+            Type::Struct(name) => format!("S{}", name),
+            Type::Enum(name) => format!("E{}", name),
+            Type::Error(name) => format!("E{}", name),
+            Type::Generic(ty, generics) => {
+                let mut mangled = ty.mangle_value();
+                for generic in generics {
+                    mangled.push_str(&generic.mangle_value());
+                }
+                mangled
+            }
+            Type::DeclaredGeneric(name) => format!("G{}", name),
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
