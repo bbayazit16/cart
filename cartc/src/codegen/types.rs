@@ -70,7 +70,15 @@ impl<'ctx> CodeGen<'ctx> {
         let param_types: Vec<BasicMetadataTypeEnum> = param_types
             .iter()
             // Why unwrapping is safe: The non-void types are already verified by the HIR.
-            .map(|ty| self.to_basic_type_enum(ty).unwrap().into())
+            .map(|ty| {
+                match ty {
+                    // Pass by reference
+                    Type::String | Type::Struct(_) | Type::Array(_) => {
+                        self.context.ptr_type(AddressSpace::default()).into()
+                    },
+                    _ => self.to_basic_type_enum(ty).unwrap().into(),
+                }
+            })
             .collect();
 
         match return_type {

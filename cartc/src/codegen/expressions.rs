@@ -55,6 +55,9 @@ impl<'ctx> CodeGen<'ctx> {
                 field,
                 returned_field_type,
             )),
+            Expression::Assignment { l_value, l_value_type, r_value, r_value_type } => {
+                Some(self.generate_assignment(l_value, l_value_type, r_value, r_value_type))
+            }
             // Expr::StructAccess(ref struct_access) => {
             //     Some(self.generate_struct_access(struct_access))
             // }
@@ -663,14 +666,11 @@ impl<'ctx> CodeGen<'ctx> {
             .iter()
             .enumerate()
             .map(|(param_index, arg)| {
-                // self.generate_expression(arg).unwrap().1.into()
                 let mut value = self.generate_expression(arg).unwrap();
-                self.as_r_value(&mut value);
-
+                let param_type = param_types[param_index];
                 // If the argument requires a pointer, create an entry block alloca, and
                 // store the value. Then, pass the alloca to the function.
                 // This is needed when the arguments are reference types, such as strings.
-                let param_type = param_types[param_index];
                 if param_type.is_pointer_type() {
                     let alloca = self.create_entry_block_alloca(
                         value.type_enum,
@@ -679,6 +679,7 @@ impl<'ctx> CodeGen<'ctx> {
                     self.builder.build_store(alloca, value.basic_value).unwrap();
                     alloca.into()
                 } else {
+                    self.as_r_value(&mut value);
                     value.basic_value.into()
                 }
             })
@@ -894,6 +895,34 @@ impl<'ctx> CodeGen<'ctx> {
         // TODO: Support multiple fields
     }
 
+    /// Generates LLVM IR for assignment expressions.
+    fn generate_assignment(
+        &mut self,
+        l_value: &Expression,
+        l_value_type: &Type,
+        r_value: &Expression,
+        r_value_type: &Type,
+    ) -> Value<'ctx> {
+        let r_or_l_value = self.generate_expression(r_value).unwrap();
+        let r_value = if r_or_l_value.is_l_value {
+            self.builder
+                .build_load(
+                    r_or_l_value.type_enum,
+                    r_or_l_value.basic_value.into_pointer_value(),
+                    "loaded_value",
+                )
+                .unwrap()
+        } else {
+            r_or_l_value.basic_value
+        };
+
+        let l_value = self.generate_expression(l_value).unwrap().basic_value.into_pointer_value();
+
+        self.builder.build_store(l_value, r_value).unwrap();
+
+        Value::new(self.to_basic_type_enum(l_value_type).unwrap(), r_value)
+    }
+
     // /// Generates LLVM IR for assignment expressions.
     // fn generate_assignment(
     //     &mut self,
@@ -924,73 +953,6 @@ impl<'ctx> CodeGen<'ctx> {
     //         .expect("Failed to store value");
     //
     //     (value_type, value)
-    // }
-    //
-    // /// Generates LLVM IR for method call expressions.
-    // fn generate_method_call(
-    //     &mut self,
-    //     method_call: &MethodCallExpr,
-    // ) -> Option<(CartType<'ctx>, BasicValueEnum<'ctx>)> {
-    //     let (cart_ty, callee_expr_ptr) = self
-    //         .generate_expression(&method_call.object)
-    //         .expect("Callee expression not found");
-    //
-    //     let method_name_str = token_value!(&method_call.method_name);
-    //     // TODO: Support multiple fields
-    //     let function_name = format!(
-    //         "{}-{}",
-    //         cart_ty.name().expect("Invalid struct name"),
-    //         method_name_str
-    //     );
-    //
-    //     let callee = self
-    //         .module
-    //         .get_function(&function_name)
-    //         .expect("Callee function not found");
-    //
-    //     // TODO: Support for static functions
-    //     if callee.count_params() - 1 != method_call.arguments.len() as u32 {
-    //         panic!("Incorrect # of arguments")
-    //     }
-    //
-    //     // add support for non-self here
-    //     let mut arguments = vec![callee_expr_ptr.into()];
-    //     for arg in method_call.arguments.iter() {
-    //         let (arg_type, arg_value) = self
-    //             .generate_expression(arg)
-    //             .expect("Failed to generate arg");
-    //         if arg_type.is_alloca {
-    //             // TODO: pass by reference for some types
-    //             // load the value
-    //             let loaded = self
-    //                 .builder
-    //                 .build_load(
-    //                     arg_type.type_enum,
-    //                     arg_value.into_pointer_value(),
-    //                     "loaded_var",
-    //                 )
-    //                 .expect("Failed to load value");
-    //             arguments.push(loaded.into());
-    //         } else {
-    //             arguments.push(arg_value.into());
-    //         }
-    //     }
-    //
-    //     let call_site = self
-    //         .builder
-    //         .build_call(callee, &arguments, "call")
-    //         .expect("Failed to build call");
-    //
-    //     if let Some(return_type) = callee.get_type().get_return_type() {
-    //         let return_type: BasicTypeEnum = return_type.as_basic_type_enum();
-    //         let return_value = call_site
-    //             .try_as_basic_value()
-    //             .left()
-    //             .expect("Return type unsupported yet");
-    //         Some((return_type.into(), return_value))
-    //     } else {
-    //         None
-    //     }
     // }
     //
     // /// Generates LLVM IR for array literals.

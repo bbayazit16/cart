@@ -75,12 +75,6 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             self.builder.build_return(None).unwrap();
         }
-        // let basic_value = basic_value_enum
-        //     .as_ref()
-        //     .map(|value| &value.basic_value as &dyn BasicValue);
-        //
-        //
-        // self.builder.build_return(basic_value).unwrap();
     }
 
     /// Generates the LLVM IR for a struct declaration.
