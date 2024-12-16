@@ -1,3 +1,5 @@
+mod variable;
+
 use crate::codegen::value::Value;
 use crate::codegen::CodeGen;
 use crate::hir::{BinaryOp, Block, Expression, Type, UnaryOp};
@@ -608,45 +610,6 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    /// Generates LLVM IR for variable expressions.
-    fn generate_variable(&mut self, name: &str, ty: &Type) -> Value<'ctx> {
-        if let Some(function) = self.module.get_function(name) {
-            let return_type = function.get_type().get_return_type();
-            match return_type {
-                Some(return_type_enum) => Value::new(
-                    return_type_enum,
-                    function.as_global_value().as_basic_value_enum(),
-                ),
-                _ => panic!("Void assigned to variable, where?"), // Some(return_type) => (
-                                                                  //     return_type.as_basic_type_enum().into(),
-                                                                  //     function.as_global_value().as_basic_value_enum(),
-                                                                  // ),
-                                                                  // None => (
-                                                                  //     CartType::void(self.context),
-                                                                  //     function.as_global_value().as_basic_value_enum(),
-                                                                  // ),
-            }
-        } else {
-            // Then standard variable in the symbol table.
-            // It exists, as verified by the type checker.
-            let mut var_alloca = *self.symbol_table.get(name).unwrap();
-            self.as_r_value(&mut var_alloca);
-            let loaded = self
-                .builder
-                .build_load(
-                    var_alloca.type_enum,
-                    var_alloca.basic_value.into_pointer_value(),
-                    format!(
-                        "loaded_{}",
-                        var_alloca.basic_value.get_name().to_str().unwrap()
-                    )
-                    .as_str(),
-                )
-                .unwrap();
-            Value::new(var_alloca.type_enum, loaded.as_basic_value_enum())
-        }
-    }
-
     /// Generates LLVM IR for call expressions.
     fn generate_call_expr(
         &mut self,
@@ -666,11 +629,14 @@ impl<'ctx> CodeGen<'ctx> {
             .iter()
             .enumerate()
             .map(|(param_index, arg)| {
+                // self.generate_expression(arg).unwrap().1.into()
                 let mut value = self.generate_expression(arg).unwrap();
-                let param_type = param_types[param_index];
+                self.as_r_value(&mut value);
+
                 // If the argument requires a pointer, create an entry block alloca, and
                 // store the value. Then, pass the alloca to the function.
                 // This is needed when the arguments are reference types, such as strings.
+                let param_type = param_types[param_index];
                 if param_type.is_pointer_type() {
                     let alloca = self.create_entry_block_alloca(
                         value.type_enum,
@@ -679,7 +645,6 @@ impl<'ctx> CodeGen<'ctx> {
                     self.builder.build_store(alloca, value.basic_value).unwrap();
                     alloca.into()
                 } else {
-                    self.as_r_value(&mut value);
                     value.basic_value.into()
                 }
             })
@@ -916,237 +881,241 @@ impl<'ctx> CodeGen<'ctx> {
             r_or_l_value.basic_value
         };
 
-        let l_value = self.generate_expression(l_value).unwrap().basic_value.into_pointer_value();
+        let l_value = self
+            .generate_expression(l_value)
+            .unwrap()
+            .basic_value
+            .into_pointer_value();
 
         self.builder.build_store(l_value, r_value).unwrap();
 
         Value::new(self.to_basic_type_enum(l_value_type).unwrap(), r_value)
     }
-
-    // /// Generates LLVM IR for assignment expressions.
-    // fn generate_assignment(
-    //     &mut self,
-    //     assignment: &AssignmentExpr,
-    // ) -> (CartType<'ctx>, BasicValueEnum<'ctx>) {
-    //     let (value_type, value) = self.generate_expression(&assignment.r_value).unwrap();
-    //
-    //     let value = if value_type.is_alloca {
-    //         self.builder
-    //             .build_load(
-    //                 value_type.type_enum,
-    //                 value.into_pointer_value(),
-    //                 "loaded_value",
-    //             )
-    //             .expect("Failed to load value")
-    //     } else {
-    //         value
-    //     };
-    //
-    //     let (_, l_value_expr) = self
-    //         .generate_expression(&assignment.l_value)
-    //         .expect("Failed to generate l_value expression");
-    //
-    //     let l_value = l_value_expr.into_pointer_value();
-    //
-    //     self.builder
-    //         .build_store(l_value, value)
-    //         .expect("Failed to store value");
-    //
-    //     (value_type, value)
-    // }
-    //
-    // /// Generates LLVM IR for array literals.
-    // fn generate_array_literal(
-    //     &mut self,
-    //     expressions: &[Expr],
-    // ) -> (CartType<'ctx>, BasicValueEnum<'ctx>) {
-    //     let values = expressions
-    //         .iter()
-    //         .map(|expr| {
-    //             let (ty, value) = self.generate_expression(expr).unwrap();
-    //             if ty.is_alloca {
-    //                 self.builder
-    //                     .build_load(ty.type_enum, value.into_pointer_value(), "loaded_value")
-    //                     .expect("Failed to load value")
-    //             } else {
-    //                 value
-    //             }
-    //         })
-    //         .collect::<Vec<BasicValueEnum<'ctx>>>();
-    //
-    //     let create_array = self
-    //         .module
-    //         .get_function("create_array")
-    //         .expect("create_array not found");
-    //     let arr_ptr = self
-    //         .builder
-    //         .build_call(
-    //             create_array,
-    //             &[self
-    //                 .context
-    //                 .i32_type()
-    //                 .const_int(values.len() as u64, false)
-    //                 .into()],
-    //             "array",
-    //         )
-    //         .expect("Failed to build call to create_array")
-    //         .try_as_basic_value()
-    //         .left()
-    //         .unwrap();
-    //
-    //     let values_ptr = self
-    //         .builder
-    //         .build_array_malloc(
-    //             self.context.i32_type(),
-    //             self.context
-    //                 .i32_type()
-    //                 .const_int(values.len() as u64, false),
-    //             "values",
-    //         )
-    //         .expect("Failed to build array malloc");
-    //
-    //     for (i, &value) in values.iter().enumerate() {
-    //         let index = self.context.i32_type().const_int(i as u64, false);
-    //         let element_ptr = unsafe {
-    //             self.builder
-    //                 .build_gep(self.context.i32_type(), values_ptr, &[index], "element_ptr")
-    //                 .expect("Failed to build GEP")
-    //         };
-    //         self.builder.build_store(element_ptr, value).unwrap();
-    //     }
-    //
-    //     let multiple_push_fn = self
-    //         .module
-    //         .get_function("push_to_array_multiple")
-    //         .expect("push_to_array_multiple not found");
-    //     self.builder
-    //         .build_call(
-    //             multiple_push_fn,
-    //             &[
-    //                 arr_ptr.into(),
-    //                 values_ptr.into(),
-    //                 self.context
-    //                     .i32_type()
-    //                     .const_int(values.len() as u64, false)
-    //                     .into(),
-    //             ],
-    //             "call_push_multiple",
-    //         )
-    //         .expect("Failed to call dynamic_array_push_multiple");
-    //
-    //     // let arr_struct_type = self
-    //     //     .context
-    //     //     .struct_type(
-    //     //         &[
-    //     //             self.context.i32_type().into(),                        // ref_count
-    //     //             self.context.i32_type().into(),                        // size
-    //     //             self.context.i32_type().into(),                        // capacity
-    //     //             self.context.ptr_type(AddressSpace::default()).into(), // elements
-    //     //         ],
-    //     //         false,
-    //     //     )
-    //     //     .as_basic_type_enum();
-    //
-    //     // TODO: duplicate alloca created in let
-    //     (
-    //         CartType::from(
-    //             self.context
-    //                 .ptr_type(AddressSpace::default())
-    //                 .as_basic_type_enum(),
-    //         ),
-    //         arr_ptr,
-    //     )
-    //     // let array_type = values[0].get_type();
-    //     // let array = CartArray::new(self.context, array_type.into());
-    //     // let array_ptr = array.allocate_array(self.context, &self.builder, values.len() as u32);
-    //     // for value in values.iter() {
-    //     //     array.push_element(&self.builder, self.context, array_ptr, *value);
-    //     // }
-    //     //
-    //     // let cart_ty: CartType = self
-    //     //     .context
-    //     //     .ptr_type(AddressSpace::default())
-    //     //     .as_basic_type_enum()
-    //     //     .into();
-    //
-    //     // (cart_ty.with_array(), array_ptr.as_basic_value_enum())
-    // }
-    //
-    // /// Generates LLVM IR for array access expressions.
-    // fn generate_array_access(
-    //     &mut self,
-    //     array_access: &ArrayAccessExpr,
-    // ) -> (CartType<'ctx>, BasicValueEnum<'ctx>) {
-    //     let (cart_ty, array_ptr) = self
-    //         .generate_expression(&array_access.array)
-    //         .expect("Can't generate array");
-    //     let (_, index) = self
-    //         .generate_expression(&array_access.index)
-    //         .expect("Can't generate index");
-    //
-    //     let array_ptr = if cart_ty.is_alloca {
-    //         self.builder
-    //             .build_load(
-    //                 cart_ty.type_enum,
-    //                 array_ptr.into_pointer_value(),
-    //                 "loaded_array",
-    //             )
-    //             .expect("Failed to load array")
-    //     } else {
-    //         array_ptr
-    //     };
-    //
-    //     let arr_struct_type = self
-    //         .context
-    //         .struct_type(
-    //             &[
-    //                 self.context.i32_type().into(),                        // ref_count
-    //                 self.context.i32_type().into(),                        // size
-    //                 self.context.i32_type().into(),                        // capacity
-    //                 self.context.ptr_type(AddressSpace::default()).into(), // elements
-    //             ],
-    //             false,
-    //         )
-    //         .as_basic_type_enum();
-    //
-    //     let elements_ptr_ptr = self
-    //         .builder
-    //         .build_struct_gep(
-    //             arr_struct_type,
-    //             array_ptr.into_pointer_value(),
-    //             3,
-    //             "elements",
-    //         )
-    //         .expect("Failed to build GEP");
-    //
-    //     let elements_ptr = self
-    //         .builder
-    //         .build_load(
-    //             self.context.ptr_type(AddressSpace::default()),
-    //             elements_ptr_ptr,
-    //             "load_elements_ptr",
-    //         )
-    //         .expect("Failed to load elements ptr")
-    //         .into_pointer_value();
-    //
-    //     let gep = unsafe {
-    //         self.builder
-    //             .build_gep(
-    //                 // TODO: don't assume it's an i32 array
-    //                 self.context.i32_type(),
-    //                 elements_ptr,
-    //                 &[index.into_int_value()],
-    //                 "array_access",
-    //             )
-    //             .expect("Failed to build GEP")
-    //     };
-    //
-    //     // TODO: different types of arrays
-    //     // Assume it is an i32 array
-    //     let element_type = self.context.i32_type().as_basic_type_enum();
-    //     (
-    //         CartType::from(element_type).with_alloca(),
-    //         gep.as_basic_value_enum(),
-    //     )
-    // }
 }
+
+// /// Generates LLVM IR for assignment expressions.
+// fn generate_assignment(
+//     &mut self,
+//     assignment: &AssignmentExpr,
+// ) -> (CartType<'ctx>, BasicValueEnum<'ctx>) {
+//     let (value_type, value) = self.generate_expression(&assignment.r_value).unwrap();
+//
+//     let value = if value_type.is_alloca {
+//         self.builder
+//             .build_load(
+//                 value_type.type_enum,
+//                 value.into_pointer_value(),
+//                 "loaded_value",
+//             )
+//             .expect("Failed to load value")
+//     } else {
+//         value
+//     };
+//
+//     let (_, l_value_expr) = self
+//         .generate_expression(&assignment.l_value)
+//         .expect("Failed to generate l_value expression");
+//
+//     let l_value = l_value_expr.into_pointer_value();
+//
+//     self.builder
+//         .build_store(l_value, value)
+//         .expect("Failed to store value");
+//
+//     (value_type, value)
+// }
+//
+// /// Generates LLVM IR for array literals.
+// fn generate_array_literal(
+//     &mut self,
+//     expressions: &[Expr],
+// ) -> (CartType<'ctx>, BasicValueEnum<'ctx>) {
+//     let values = expressions
+//         .iter()
+//         .map(|expr| {
+//             let (ty, value) = self.generate_expression(expr).unwrap();
+//             if ty.is_alloca {
+//                 self.builder
+//                     .build_load(ty.type_enum, value.into_pointer_value(), "loaded_value")
+//                     .expect("Failed to load value")
+//             } else {
+//                 value
+//             }
+//         })
+//         .collect::<Vec<BasicValueEnum<'ctx>>>();
+//
+//     let create_array = self
+//         .module
+//         .get_function("create_array")
+//         .expect("create_array not found");
+//     let arr_ptr = self
+//         .builder
+//         .build_call(
+//             create_array,
+//             &[self
+//                 .context
+//                 .i32_type()
+//                 .const_int(values.len() as u64, false)
+//                 .into()],
+//             "array",
+//         )
+//         .expect("Failed to build call to create_array")
+//         .try_as_basic_value()
+//         .left()
+//         .unwrap();
+//
+//     let values_ptr = self
+//         .builder
+//         .build_array_malloc(
+//             self.context.i32_type(),
+//             self.context
+//                 .i32_type()
+//                 .const_int(values.len() as u64, false),
+//             "values",
+//         )
+//         .expect("Failed to build array malloc");
+//
+//     for (i, &value) in values.iter().enumerate() {
+//         let index = self.context.i32_type().const_int(i as u64, false);
+//         let element_ptr = unsafe {
+//             self.builder
+//                 .build_gep(self.context.i32_type(), values_ptr, &[index], "element_ptr")
+//                 .expect("Failed to build GEP")
+//         };
+//         self.builder.build_store(element_ptr, value).unwrap();
+//     }
+//
+//     let multiple_push_fn = self
+//         .module
+//         .get_function("push_to_array_multiple")
+//         .expect("push_to_array_multiple not found");
+//     self.builder
+//         .build_call(
+//             multiple_push_fn,
+//             &[
+//                 arr_ptr.into(),
+//                 values_ptr.into(),
+//                 self.context
+//                     .i32_type()
+//                     .const_int(values.len() as u64, false)
+//                     .into(),
+//             ],
+//             "call_push_multiple",
+//         )
+//         .expect("Failed to call dynamic_array_push_multiple");
+//
+//     // let arr_struct_type = self
+//     //     .context
+//     //     .struct_type(
+//     //         &[
+//     //             self.context.i32_type().into(),                        // ref_count
+//     //             self.context.i32_type().into(),                        // size
+//     //             self.context.i32_type().into(),                        // capacity
+//     //             self.context.ptr_type(AddressSpace::default()).into(), // elements
+//     //         ],
+//     //         false,
+//     //     )
+//     //     .as_basic_type_enum();
+//
+//     // TODO: duplicate alloca created in let
+//     (
+//         CartType::from(
+//             self.context
+//                 .ptr_type(AddressSpace::default())
+//                 .as_basic_type_enum(),
+//         ),
+//         arr_ptr,
+//     )
+//     // let array_type = values[0].get_type();
+//     // let array = CartArray::new(self.context, array_type.into());
+//     // let array_ptr = array.allocate_array(self.context, &self.builder, values.len() as u32);
+//     // for value in values.iter() {
+//     //     array.push_element(&self.builder, self.context, array_ptr, *value);
+//     // }
+//     //
+//     // let cart_ty: CartType = self
+//     //     .context
+//     //     .ptr_type(AddressSpace::default())
+//     //     .as_basic_type_enum()
+//     //     .into();
+//
+//     // (cart_ty.with_array(), array_ptr.as_basic_value_enum())
+// }
+//
+// /// Generates LLVM IR for array access expressions.
+// fn generate_array_access(
+//     &mut self,
+//     array_access: &ArrayAccessExpr,
+// ) -> (CartType<'ctx>, BasicValueEnum<'ctx>) {
+//     let (cart_ty, array_ptr) = self
+//         .generate_expression(&array_access.array)
+//         .expect("Can't generate array");
+//     let (_, index) = self
+//         .generate_expression(&array_access.index)
+//         .expect("Can't generate index");
+//
+//     let array_ptr = if cart_ty.is_alloca {
+//         self.builder
+//             .build_load(
+//                 cart_ty.type_enum,
+//                 array_ptr.into_pointer_value(),
+//                 "loaded_array",
+//             )
+//             .expect("Failed to load array")
+//     } else {
+//         array_ptr
+//     };
+//
+//     let arr_struct_type = self
+//         .context
+//         .struct_type(
+//             &[
+//                 self.context.i32_type().into(),                        // ref_count
+//                 self.context.i32_type().into(),                        // size
+//                 self.context.i32_type().into(),                        // capacity
+//                 self.context.ptr_type(AddressSpace::default()).into(), // elements
+//             ],
+//             false,
+//         )
+//         .as_basic_type_enum();
+//
+//     let elements_ptr_ptr = self
+//         .builder
+//         .build_struct_gep(
+//             arr_struct_type,
+//             array_ptr.into_pointer_value(),
+//             3,
+//             "elements",
+//         )
+//         .expect("Failed to build GEP");
+//
+//     let elements_ptr = self
+//         .builder
+//         .build_load(
+//             self.context.ptr_type(AddressSpace::default()),
+//             elements_ptr_ptr,
+//             "load_elements_ptr",
+//         )
+//         .expect("Failed to load elements ptr")
+//         .into_pointer_value();
+//
+//     let gep = unsafe {
+//         self.builder
+//             .build_gep(
+//                 // TODO: don't assume it's an i32 array
+//                 self.context.i32_type(),
+//                 elements_ptr,
+//                 &[index.into_int_value()],
+//                 "array_access",
+//             )
+//             .expect("Failed to build GEP")
+//     };
+//
+//     // TODO: different types of arrays
+//     // Assume it is an i32 array
+//     let element_type = self.context.i32_type().as_basic_type_enum();
+//     (
+//         CartType::from(element_type).with_alloca(),
+//         gep.as_basic_value_enum(),
+//     )
+// }

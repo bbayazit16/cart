@@ -18,8 +18,8 @@ use inkwell::values::PointerValue;
 use std::collections::HashMap;
 
 pub(crate) mod compiler;
-mod declarations;
 mod expressions;
+mod declarations;
 mod statements;
 mod std_module;
 pub(crate) mod symbol_table;
