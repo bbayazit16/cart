@@ -35,7 +35,6 @@ impl<'ctx> CodeGen<'ctx> {
             .iter()
             .enumerate()
             .map(|(param_index, arg)| {
-                dbg!(&callee);
                 let value = self.generate_expression(arg).unwrap();
                 // If the argument requires a pointer, create an entry block alloca, and
                 // store the value. Then, pass the alloca to the function.
@@ -45,7 +44,6 @@ impl<'ctx> CodeGen<'ctx> {
                 if param_type.is_pointer_type() {
                     match value {
                         ValueState::L(l_value) => {
-                            dbg!("L");
                             let original_type = BasicTypeEnum::from(l_value);
                             if original_type.is_pointer_type() {
                                 dbg!("Original is of pointer type {}", callee);
@@ -57,7 +55,6 @@ impl<'ctx> CodeGen<'ctx> {
                             // BasicValueEnum::from(r_value).into()
                         }
                         ValueState::R(r_value) => {
-                            dbg!("R");
                             let alloca = self.create_entry_block_alloca(
                                 BasicTypeEnum::from(r_value),
                                 format!("alloca_{}_{}", callee, param_index).as_str(),
