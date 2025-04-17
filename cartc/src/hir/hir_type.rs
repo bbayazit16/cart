@@ -72,6 +72,11 @@ impl Type {
             Type::DeclaredGeneric(name) => format!("G{}", name),
         }
     }
+    
+    /// Return if the type is a reference type.
+    pub(crate) fn is_reference(&self) -> bool {
+        matches!(self, Type::String | Type::Array(_) | Type::Struct(_) | Type::Enum(_))
+    }
 }
 
 #[derive(Debug, Copy, Clone)]

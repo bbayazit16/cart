@@ -87,20 +87,20 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    /// Set the value as an r-value. If already an r-value, do nothing.
-    pub(super) fn as_r_value(&mut self, value: &mut Value<'ctx>) {
-        if value.is_l_value {
-            let loaded_var = self
-                .builder
-                .build_load(
-                    value.type_enum,
-                    value.basic_value.into_pointer_value(),
-                    "cast_l_value",
-                )
-                .unwrap();
-
-            value.basic_value = loaded_var;
-            value.is_l_value = false;
-        }
-    }
+    // /// Set the value as an r-value. If already an r-value, do nothing.
+    // pub(super) fn as_r_value(&mut self, value: &mut Value<'ctx>) {
+    //     if value.is_l_value {
+    //         let loaded_var = self
+    //             .builder
+    //             .build_load(
+    //                 value.type_enum,
+    //                 value.basic_value.into_pointer_value(),
+    //                 "cast_l_value",
+    //             )
+    //             .unwrap();
+    // 
+    //         value.basic_value = loaded_var;
+    //         value.is_l_value = false;
+    //     }
+    // }
 }

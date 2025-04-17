@@ -2,7 +2,7 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 
 /// Builder for the standard library module.
-pub struct StdModuleBuilder<'ctx> {
+pub(crate) struct StdModuleBuilder<'ctx> {
     context: &'ctx Context,
     module: Module<'ctx>,
 }
