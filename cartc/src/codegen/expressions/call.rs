@@ -40,13 +40,11 @@ impl<'ctx> CodeGen<'ctx> {
                 // store the value. Then, pass the alloca to the function.
                 // This is needed when the arguments are reference types, such as strings.
                 let param_type = param_types[param_index];
-                dbg!(&param_type.is_pointer_type());
                 if param_type.is_pointer_type() {
                     match value {
                         ValueState::L(l_value) => {
                             let original_type = BasicTypeEnum::from(l_value);
                             if original_type.is_pointer_type() {
-                                dbg!("Original is of pointer type {}", callee);
                                 BasicValueEnum::from(self.cast_to_r_value(value)).into()
                             } else {
                                 PointerValue::from(l_value).into()

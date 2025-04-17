@@ -78,7 +78,7 @@ impl<'ctx> CodeGen<'ctx> {
             self.generate_declaration(declaration);
         }
 
-        self.module.print_to_stderr();
+        // self.module.print_to_stderr();
         self.module.verify().unwrap_or_else(|err| {
             panic!("Module verification failed: {:?}", err);
         });
