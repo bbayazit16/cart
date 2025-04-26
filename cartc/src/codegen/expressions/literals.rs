@@ -177,7 +177,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(
                 cart_string_llvm_type,
                 cart_string_ptr,
-                format!("loaded_cart_string_\"{}\"", value).as_str(),
+                format!("loaded_cart_string_{}", value).as_str(),
             )
             .unwrap();
 
