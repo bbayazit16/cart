@@ -43,7 +43,7 @@ jobs:
         env:
           LLVM_SYS_PREFIX: ${{ steps.llvm-install.outputs.LLVM_SYS_PREFIX }}
         run: |
-          export LLVM_SYS_180_PREFIX=${LLVM_SYS_PREFIX}
+          export LLVM_SYS_181_PREFIX=${LLVM_SYS_PREFIX}
           if [[ "${{ matrix.os }}" == *"macos"* ]]; then
             export LIBRARY_PATH="$LIBRARY_PATH:$(brew --prefix zstd)/lib"
           fi
