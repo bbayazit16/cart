@@ -96,7 +96,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let cart_string_ptr = self.create_entry_block_alloca(
             cart_string_llvm_type,
-            format!("cart_string_\"{}\"_ptr", value).as_str(),
+            format!("cart_string_{}_ptr", value).as_str(),
         );
 
         // Initialize reference count to 1:
