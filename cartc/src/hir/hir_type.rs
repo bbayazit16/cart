@@ -30,6 +30,11 @@ pub(crate) enum Type {
 }
 
 impl Type {
+    /// Return true if the type is `reference type`.
+    pub(crate) fn is_reference_type(&self) -> bool {
+        matches!(self, Type::String | Type::Array(_) | Type::Struct(_))
+    }
+    
     /// Return true if the type can be cast to `other`.
     pub(crate) fn can_be_cast_to(&self, other: &Type) -> bool {
         match (self, other) {
@@ -45,7 +50,7 @@ impl Type {
             _ => self == other,
         }
     }
-    
+
     /// Return the mangle value of the type.
     pub(crate) fn mangle_value(&self) -> String {
         match self {
@@ -71,11 +76,6 @@ impl Type {
             }
             Type::DeclaredGeneric(name) => format!("G{}", name),
         }
-    }
-    
-    /// Return if the type is a reference type.
-    pub(crate) fn is_reference(&self) -> bool {
-        matches!(self, Type::String | Type::Array(_) | Type::Struct(_) | Type::Enum(_))
     }
 }
 

@@ -35,12 +35,20 @@ impl CodeGen<'_> {
         // 3) Add the function parameters to the symbol table.
         let mut variables_to_add = Vec::new();
         for (i, param) in function.get_param_iter().enumerate() {
-            let hir_param = &function_hir.signature.params[i];
-            let name = &hir_param.0;
+            let (name, hir_type) = &function_hir.signature.params[i];
             param.set_name(name);
+            
+            let original_type = match hir_type.is_reference_type() {
+                true => self.to_basic_type_enum(hir_type),
+                false => None
+            };
+            
             variables_to_add.push((
                 name,
-                Value::new_r(param.get_type(), param.as_basic_value_enum()),
+                Value::new(param.get_type(), param.as_basic_value_enum()),
+                original_type,
+                // Possibly redundant check to be decided later: i == 0 && self?
+                function_hir.signature.is_self && i == 0 && name == "self"
             ));
         }
 

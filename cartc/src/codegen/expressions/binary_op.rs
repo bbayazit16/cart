@@ -1,4 +1,4 @@
-use crate::codegen::value::{RValue, Value};
+use crate::codegen::value::Value;
 use crate::codegen::CodeGen;
 use crate::hir::{BinaryOp, Expression, Type};
 use inkwell::types::BasicTypeEnum;
@@ -11,23 +11,23 @@ impl<'ctx> CodeGen<'ctx> {
     /// Binary expressions always return an R-Value, as the result of the function
     /// is a value that can be used in other expressions. If it was an L-Value, it would
     /// be a reference to a memory location, which would not be useful in this context.
-    pub(super) fn generate_binary(
+    pub(super) fn generate_binary_r_value(
         &mut self,
         left: &Expression,
         left_type: &Type,
         op: &BinaryOp,
         right: &Expression,
-    ) -> Value<'ctx, RValue> {
+    ) -> Value<'ctx> {
         // Steps to generate a binary expression are as follows:
         //      1) Generate the left expression. If it is not an R-Value, load it.
         //      2) Generate the right expression. If it is not an R-Value, load it.
         //      3) Apply the binary operator to the left and right values.
         //      4) Return the resulting value, which is an R-Value.
-        let left_expression = self.generate_expression(left).unwrap();
-        let right_expression = self.generate_expression(right).unwrap();
-        
-        let left = self.cast_to_r_value(left_expression);
-        let right = self.cast_to_r_value(right_expression);
+        let left = self.generate_expression_r_value(left).unwrap();
+        let right = self.generate_expression_r_value(right).unwrap();
+
+        // let left = self.cast_to_r_value(left_expression);
+        // let right = self.cast_to_r_value(right_expression);
 
         self.apply_binary_op(left, left_type, op, right)
     }
@@ -37,11 +37,11 @@ impl<'ctx> CodeGen<'ctx> {
     /// is a value that can be used in other expressions.
     fn apply_binary_op(
         &self,
-        left: Value<'ctx, RValue>,
+        left: Value<'ctx>,
         left_type: &Type,
         op: &BinaryOp,
-        right: Value<'ctx, RValue>,
-    ) -> Value<'ctx, RValue> {
+        right: Value<'ctx>,
+    ) -> Value<'ctx> {
         match (left_type, op) {
             // Integer Operations
             (Type::Int | Type::Int64 | Type::Int128 | Type::Int256, _) => self.apply_int_op(
@@ -76,7 +76,7 @@ impl<'ctx> CodeGen<'ctx> {
         left: IntValue<'ctx>,
         right: IntValue<'ctx>,
         op: &BinaryOp,
-    ) -> Value<'ctx, RValue> {
+    ) -> Value<'ctx> {
         use BinaryOp::*;
         let result = match op {
             Add => self
@@ -131,7 +131,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
         };
 
-        Value::new_r(self.to_basic_type_enum(&Type::Int).unwrap(), result)
+        Value::new(self.to_basic_type_enum(&Type::Int).unwrap(), result)
     }
 
     /// Applies a boolean operator to two boolean values. This always results in an R-Value.
@@ -140,7 +140,7 @@ impl<'ctx> CodeGen<'ctx> {
         left: BasicValueEnum<'ctx>,
         right: BasicValueEnum<'ctx>,
         op: &BinaryOp,
-    ) -> Value<'ctx, RValue> {
+    ) -> Value<'ctx> {
         let left_int = self
             .builder
             .build_int_z_extend(
@@ -180,7 +180,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap();
 
-        Value::new_r(
+        Value::new(
             self.to_basic_type_enum(&Type::Bool).unwrap(),
             BasicValueEnum::from(result_int),
         )
@@ -198,9 +198,9 @@ impl<'ctx> CodeGen<'ctx> {
     ///     4) Return the loaded value.
     fn concatenate_strings(
         &self,
-        left: Value<'ctx, RValue>,
-        right: Value<'ctx, RValue>,
-    ) -> Value<'ctx, RValue> {
+        left: Value<'ctx>,
+        right: Value<'ctx>,
+    ) -> Value<'ctx> {
         // 1) Allocate for the left value.
         let left_alloca =
             self.create_entry_block_alloca(BasicTypeEnum::from(left), "alloca_left_string");
@@ -245,6 +245,6 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // 4) Return the loaded value.
-        Value::new_r(self.to_basic_type_enum(&Type::String).unwrap(), loaded)
+        Value::new(self.to_basic_type_enum(&Type::String).unwrap(), loaded)
     }
 }

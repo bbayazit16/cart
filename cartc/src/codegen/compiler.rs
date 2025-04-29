@@ -7,6 +7,7 @@ use inkwell::targets::{
 };
 use std::env;
 use std::path::{Path, PathBuf};
+use std::process::ExitStatus;
 
 /// Compiles the program into an executable.
 /// Arguments:
@@ -14,7 +15,7 @@ use std::path::{Path, PathBuf};
 /// - `context` - The inkwell context.
 /// - `run` - If true, runs the executable after compilation.
 /// - `options` - The compiler options.
-pub(crate) fn compile(hir: &mut Program, run: bool, options: &CommonOptions) {
+pub(crate) fn compile_and_or_run(hir: &mut Program, run: bool, options: &CommonOptions) {
     let context = inkwell::context::Context::create();
 
     let mut codegen = CodeGen::new(&context, Some(&options.entrypoint));
@@ -68,7 +69,11 @@ pub(crate) fn compile(hir: &mut Program, run: bool, options: &CommonOptions) {
     link_object_file(&output_file_path, &output_executable_path);
 
     if run {
-        run_executable(&output_executable_path);
+        let status = run_executable(&output_executable_path);
+        match status.code() {
+            Some(code) => println!("\n[cart] Process finished with exit code {}", code),
+            None => println!("Failed to execute."),
+        }
     }
 }
 
@@ -121,8 +126,8 @@ fn link_object_file(object_file: &PathBuf, output_executable: &PathBuf) {
     std::fs::remove_file(object_file).expect("Failed to remove object file");
 }
 
-/// Runs the program executable.
-fn run_executable(executable: &PathBuf) {
+/// Runs the executable and return the exit status.
+fn run_executable(executable: &PathBuf) -> ExitStatus {
     let executable_path = if executable.is_absolute() {
         executable.clone()
     } else {
@@ -132,5 +137,5 @@ fn run_executable(executable: &PathBuf) {
     std::process::Command::new(&executable_path)
         .current_dir(env::current_dir().unwrap())
         .status()
-        .expect("Failed to execute program");
+        .expect("Failed to execute program")
 }

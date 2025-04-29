@@ -10,7 +10,7 @@ mod reporter;
 mod token;
 
 use crate::cli::{Cli, Commands};
-use crate::codegen::compiler::compile;
+use crate::codegen::compiler::compile_and_or_run;
 use crate::context::FileContext;
 use crate::parser::Parser;
 use crate::reporter::ConsoleReporter;
@@ -54,7 +54,7 @@ fn main() {
             let mut hir = hir::TypeChecker::new(&reporter).resolve_types(&program);
 
             let start = std::time::Instant::now();
-            compile(&mut hir, matches!(cli.command, Commands::Run(_)), options);
+            compile_and_or_run(&mut hir, matches!(cli.command, Commands::Run(_)), options);
             let end = std::time::Instant::now();
 
             if options.time_compilation {

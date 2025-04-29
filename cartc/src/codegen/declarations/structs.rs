@@ -27,6 +27,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.struct_definition_table
             .add(name.to_string(), (struct_type, fields_to_indices_and_types));
 
+        // TODO: Why was this commented, what was it here for before, etc.
         // let field_types = struct_decl
         //     .fields
         //     .iter()

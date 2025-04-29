@@ -8,7 +8,7 @@
 //! and their values during codegen.
 use crate::codegen::std_module::StdModuleBuilder;
 use crate::codegen::symbol_table::SymbolTable;
-use crate::codegen::value::{LValue, Value};
+use crate::codegen::value::{Value};
 use crate::hir;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -40,7 +40,7 @@ pub(crate) struct CodeGen<'ctx> {
     context: &'ctx Context,
     module: Module<'ctx>,
     builder: Builder<'ctx>,
-    symbol_table: SymbolTable<Value<'ctx, LValue>>,
+    symbol_table: SymbolTable<Value<'ctx>>,
     struct_definition_table: SymbolTable<StructDefinition<'ctx>>,
 }
 
@@ -78,7 +78,7 @@ impl<'ctx> CodeGen<'ctx> {
             self.generate_declaration(declaration);
         }
 
-        // self.module.print_to_stderr();
+        self.module.print_to_stderr();
         self.module.verify().unwrap_or_else(|err| {
             panic!("Module verification failed: {:?}", err);
         });

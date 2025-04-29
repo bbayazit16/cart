@@ -69,7 +69,8 @@ impl<'ctx> CodeGen<'ctx> {
         let return_type = self.to_basic_type_enum(return_type);
         let param_types: Vec<BasicMetadataTypeEnum> = param_types
             .iter()
-            // Why unwrapping is safe: The non-void types are already verified by the HIR.
+            // Why unwrapping is safe: The non-void types are already verified by the type checker.
+            // And should be valid in a given HIR.
             .map(|ty| {
                 match ty {
                     // Pass by reference
@@ -81,6 +82,7 @@ impl<'ctx> CodeGen<'ctx> {
             })
             .collect();
 
+        // TODO: Consider attaching `byval` attribute
         match return_type {
             Some(non_void) => non_void.fn_type(&param_types, false),
             None => self.context.void_type().fn_type(&param_types, false),

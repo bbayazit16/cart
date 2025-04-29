@@ -1,15 +1,15 @@
-use inkwell::AddressSpace;
-use inkwell::values::{BasicValue, BasicValueEnum};
+use crate::codegen::value::Value;
 use crate::codegen::CodeGen;
-use crate::codegen::value::{RValue, Value};
 use crate::hir::Type;
+use inkwell::values::{BasicValue, BasicValueEnum};
+use inkwell::AddressSpace;
 
 impl<'ctx> CodeGen<'ctx> {
     /// Generates the LLVM IR for a literal.
     ///
     /// Literals always return an R-Value. This is because literals are always
     /// immutable and cannot be assigned to.
-    pub(super) fn generate_literal(&self, value: &str, ty: &Type) -> Value<'ctx, RValue> {
+    pub(super) fn generate_literal_r_value(&self, value: &str, ty: &Type) -> Value<'ctx> {
         let literal_value = match ty {
             Type::Int => self
                 .context
@@ -48,10 +48,7 @@ impl<'ctx> CodeGen<'ctx> {
             Type::DeclaredGeneric(_) => todo!(),
         };
 
-        Value::new_r(
-            self.to_basic_type_enum(ty).unwrap(),
-            literal_value,
-        )
+        Value::new(self.to_basic_type_enum(ty).unwrap(), literal_value)
     }
 
     /// Detects base and converts a string to an integer value.
@@ -180,8 +177,7 @@ impl<'ctx> CodeGen<'ctx> {
                 format!("loaded_cart_string_{}", value).as_str(),
             )
             .unwrap();
-
-        loaded
-        // cart_string_ptr.as_basic_value_enum()
+        
+        loaded.as_basic_value_enum()
     }
 }

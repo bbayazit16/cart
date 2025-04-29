@@ -8,7 +8,9 @@ impl CodeGen<'_> {
     pub(crate) fn generate_statement(&mut self, stmt: &Statement) {
         match stmt {
             Statement::Expression(ref expr) => {
-                self.generate_expression(expr);
+                // 'Expression statements' happen only during assignment, which
+                // return the r value.
+                self.generate_expression_r_value(expr);
             }
             Statement::Let {
                 ref name,

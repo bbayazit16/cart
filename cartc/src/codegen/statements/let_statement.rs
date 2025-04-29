@@ -1,4 +1,4 @@
-use crate::codegen::value::{Value, ValueState};
+use crate::codegen::value::{Value};
 use crate::codegen::CodeGen;
 use crate::hir::Expression;
 use inkwell::types::BasicTypeEnum;
@@ -15,12 +15,7 @@ impl CodeGen<'_> {
     pub(super) fn generate_let_stmt(&mut self, name: &String, value: &Expression) {
         // 1) Generate the value of the expression.
         // Unwrapping below is safe, as type checker ensures that unit types are not assigned.
-        let r_value = self.generate_expression(value).unwrap();
-        assert!(matches!(r_value, ValueState::R(_)));
-        let r_value = match r_value {
-            ValueState::R(r) => r,
-            _ => unreachable!(),
-        };
+        let r_value = self.generate_expression_r_value(value).unwrap();
 
         // 2) Create an alloca for the variable.
         let alloca = self.create_entry_block_alloca(
@@ -36,7 +31,7 @@ impl CodeGen<'_> {
         // 4) Add the variable to the symbol table.
         self.symbol_table.add(
             name.clone(),
-            Value::new_l(BasicTypeEnum::from(r_value), alloca.as_basic_value_enum()),
+            Value::new(BasicTypeEnum::from(r_value), alloca.as_basic_value_enum()),
         );
     }
 }
