@@ -24,13 +24,11 @@ impl<'ctx> CodeGen<'ctx> {
         // Point { x: 4, y: 4 }.x
         // Then, trying to generate an l-value for the struct literal would be invalid.
         // So we must always generate an r-value and create a pointer out of it.
-        let struct_object_ptr = match object {
-            Expression::Variable { name, .. } if name == "self" => {
-                let self_ptr = self.generate_expression_l_value(object).unwrap();
-                BasicValueEnum::from(self_ptr).into_pointer_value()
-            }
-            _ => {
-                let struct_object = self.generate_expression_r_value(object).unwrap();
+        let struct_object_ptr = {
+            let struct_object = self.generate_expression_r_value(object).unwrap();
+            if BasicTypeEnum::from(struct_object).is_pointer_type() {
+                BasicValueEnum::from(struct_object).into_pointer_value()
+            } else {
                 let alloca = self.create_entry_block_alloca(
                     BasicTypeEnum::from(struct_object),
                     format!("alloca_struct_{}", object_name).as_str(),
@@ -39,9 +37,9 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder
                     .build_store(alloca, BasicValueEnum::from(struct_object))
                     .unwrap();
-    
+
                 alloca
-            },
+            }
         };
         // let struct_object = self.generate_expression_r_value(object).unwrap();
 

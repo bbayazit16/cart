@@ -35,24 +35,25 @@ impl<'ctx> CodeGen<'ctx> {
             .iter()
             .enumerate()
             .map(|(param_index, arg)| {
-                let r_value = self.generate_expression_r_value(arg).unwrap();
                 // TODO: Check the code below after the rl-value refactor with counterexamples + reformat code
                 // If the argument requires a pointer, create an entry block alloca, and
                 // store the value. Then, pass the alloca to the function.
                 // This is needed when the arguments are reference types, such as strings.
                 let param_type = param_types[param_index];
                 if param_type.is_pointer_type() {
-                    // If pass by reference (like a string)
-                    // Then create a new pointer to the data, and pass that into the function.
-                    let alloca = self.create_entry_block_alloca(
-                        BasicTypeEnum::from(r_value),
-                        format!("alloca_{}_{}", callee, param_index).as_str(),
-                    );
-                    self.builder
-                        .build_store(alloca, BasicValueEnum::from(r_value))
-                        .unwrap();
-                    
-                    alloca.into()
+                    // let r_value = self.generate_expression_r_value(arg).unwrap();
+                    // // If pass by reference (like a string)
+                    // // Then create a new pointer to the data, and pass that into the function.
+                    // let alloca = self.create_entry_block_alloca(
+                    //     BasicTypeEnum::from(r_value),
+                    //     format!("alloca_{}_{}", callee, param_index).as_str(),
+                    // );
+                    // self.builder
+                    //     .build_store(alloca, BasicValueEnum::from(r_value))
+                    //     .unwrap();
+                    // 
+                    BasicValueEnum::from(self.generate_expression_l_value(arg).unwrap()).into()
+                    // alloca.into()
                     // TODO: Cleanup comments
                     // match value {
                     //     ValueState::L(l_value) => {
@@ -77,8 +78,8 @@ impl<'ctx> CodeGen<'ctx> {
                     //     }
                     // }
                 } else {
-                    // let r_value = self.cast_to_r_value(value);
                     // Pass by value
+                    let r_value = self.generate_expression_r_value(arg).unwrap();
                     BasicValueEnum::from(r_value).into()
                 }
             })

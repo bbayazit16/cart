@@ -168,16 +168,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .set_alignment(8)
             .unwrap();
-
-        let loaded = self
-            .builder
-            .build_load(
-                cart_string_llvm_type,
-                cart_string_ptr,
-                format!("loaded_cart_string_{}", value).as_str(),
-            )
-            .unwrap();
         
-        loaded.as_basic_value_enum()
+        cart_string_ptr.as_basic_value_enum()
     }
 }

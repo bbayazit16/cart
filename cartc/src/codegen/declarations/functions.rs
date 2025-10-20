@@ -38,17 +38,9 @@ impl CodeGen<'_> {
             let (name, hir_type) = &function_hir.signature.params[i];
             param.set_name(name);
             
-            let original_type = match hir_type.is_reference_type() {
-                true => self.to_basic_type_enum(hir_type),
-                false => None
-            };
-            
             variables_to_add.push((
                 name,
                 Value::new(param.get_type(), param.as_basic_value_enum()),
-                original_type,
-                // Possibly redundant check to be decided later: i == 0 && self?
-                function_hir.signature.is_self && i == 0 && name == "self"
             ));
         }
 
