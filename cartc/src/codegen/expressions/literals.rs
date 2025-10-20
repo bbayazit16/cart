@@ -74,7 +74,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    /// Generates a string literal, returning a pointer to the string struct.
+    /// Generates a string literal, returning the original struct.
     fn generate_string_literal(&self, value: &str) -> BasicValueEnum<'ctx> {
         let ptr_type = self.context.ptr_type(AddressSpace::default());
         let i64_type = self.context.i64_type();
@@ -168,7 +168,16 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .set_alignment(8)
             .unwrap();
-        
-        cart_string_ptr.as_basic_value_enum()
+
+        let cart_string = self
+            .builder
+            .build_load(
+                cart_string_llvm_type,
+                cart_string_ptr,
+                "cart_string_literal_load",
+            )
+            .unwrap();
+
+        cart_string
     }
 }
