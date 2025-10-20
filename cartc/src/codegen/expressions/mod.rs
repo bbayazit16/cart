@@ -81,7 +81,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Generates LLVM IR expression and returns an r-value.
-    /// If the requested variable can't be generated as r-value, panic (a compiler bug).
+    /// If the requested variable can't be generated as r-value, return None.
     pub(super) fn generate_expression_l_value(&mut self, expr: &Expression) -> Option<Value<'ctx>> {
         match expr {
             Expression::Variable {
@@ -101,10 +101,7 @@ impl<'ctx> CodeGen<'ctx> {
                 field,
                 returned_field_type,
             )),
-            e => {
-                dbg!(&e);
-                unimplemented!()
-            }
+            _ => None,
         }
         
     }

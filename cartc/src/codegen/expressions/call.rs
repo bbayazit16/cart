@@ -41,42 +41,20 @@ impl<'ctx> CodeGen<'ctx> {
                 // This is needed when the arguments are reference types, such as strings.
                 let param_type = param_types[param_index];
                 if param_type.is_pointer_type() {
-                    // let r_value = self.generate_expression_r_value(arg).unwrap();
-                    // // If pass by reference (like a string)
-                    // // Then create a new pointer to the data, and pass that into the function.
-                    // let alloca = self.create_entry_block_alloca(
-                    //     BasicTypeEnum::from(r_value),
-                    //     format!("alloca_{}_{}", callee, param_index).as_str(),
-                    // );
-                    // self.builder
-                    //     .build_store(alloca, BasicValueEnum::from(r_value))
-                    //     .unwrap();
-                    // 
-                    BasicValueEnum::from(self.generate_expression_l_value(arg).unwrap()).into()
-                    // alloca.into()
-                    // TODO: Cleanup comments
-                    // match value {
-                    //     ValueState::L(l_value) => {
-                    //         let original_type = BasicTypeEnum::from(l_value);
-                    //         if original_type.is_pointer_type() {
-                    //             BasicValueEnum::from(self.cast_to_r_value(value)).into()
-                    //         } else {
-                    //             PointerValue::from(l_value).into()
-                    //         }
-                    //         // let r_value = self.cast_to_r_value(value);
-                    //         // BasicValueEnum::from(r_value).into()
-                    //     }
-                    //     ValueState::R(r_value) => {
-                    //         let alloca = self.create_entry_block_alloca(
-                    //             BasicTypeEnum::from(r_value),
-                    //             format!("alloca_{}_{}", callee, param_index).as_str(),
-                    //         );
-                    //         self.builder
-                    //             .build_store(alloca, BasicValueEnum::from(r_value))
-                    //             .unwrap();
-                    //         alloca.into()
-                    //     }
-                    // }
+                    if let Some(l_value) = self.generate_expression_l_value(arg) {
+                        BasicValueEnum::from(l_value).into()
+                    } else {
+                        let r_value = self.generate_expression_r_value(arg).unwrap();
+                        let alloca = self.create_entry_block_alloca(
+                            BasicTypeEnum::from(r_value),
+                            format!("alloca_{}_{}", callee, param_index).as_str(),
+                        );
+                        self.builder
+                            .build_store(alloca, BasicValueEnum::from(r_value))
+                            .unwrap();
+
+                        alloca.into()
+                    }
                 } else {
                     // Pass by value
                     let r_value = self.generate_expression_r_value(arg).unwrap();
